@@ -3,9 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace DataLayer.SchemaDb
 {
+    [EntityTypeConfiguration(typeof(BookEntityTypeConfiguration))]
     public class Book
     {
         public int BookId { get; set; }
@@ -23,5 +26,15 @@ namespace DataLayer.SchemaDb
 
         //many-to-many relationships
         public ICollection<Book> Books { get; set; }
+    }
+
+    public class BookEntityTypeConfiguration : IEntityTypeConfiguration<Book>
+    {
+        public void Configure(EntityTypeBuilder<Book> builder)
+        {
+            builder
+                .ToTable(tableBuilder => tableBuilder
+                    .HasCheckConstraint("CK_book_CheckConstraint", "(\"Title\" IS NOT NULL) = (\"PublishedOn\" IS NOT NULL)"));
+        }
     }
 }

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,8 @@ namespace EfSchemaCompare.Internal
     {
         private const string NoPrimaryKey = "- no primary key -";
 
+        private readonly DbContext _dbContext;
+        private readonly IModel _designTimeModel;
         private readonly IModel _model;
         private readonly string _dbContextName;
         private readonly IRelationalTypeMappingSource _relationalTypeMapping;
@@ -37,6 +40,8 @@ namespace EfSchemaCompare.Internal
 
         public Stage1Comparer(DbContext context, CompareEfSqlConfig config = null, List<CompareLog> logs = null)
         {
+            _dbContext = context;
+            _designTimeModel = context.GetService<IDesignTimeModel>().Model;
             _model = context.Model;
             _dbContextName = context.GetType().Name;
             _relationalTypeMapping = context.GetService<IRelationalTypeMappingSource>();
@@ -60,9 +65,9 @@ namespace EfSchemaCompare.Internal
                 Where(x => x.FormSchemaTableFromModel() == null).ToList();
             if (entitiesNotMappedToTableOrView.Any())
                 dbLogger.MarkAsNotChecked(null, string.
-                    Join(", ", entitiesNotMappedToTableOrView.Select(x => x.ClrType.Name)), 
+                    Join(", ", entitiesNotMappedToTableOrView.Select(x => x.ClrType.Name)),
                     CompareAttributes.NotMappedToDatabase);
-            
+
             #region JsonMapping
             //Json Mapping Start----------------------------------------------------------------------------
             //Get a list of entities that are using Json Mapping. 
@@ -104,6 +109,54 @@ namespace EfSchemaCompare.Internal
                     logger.NotInDatabase(entityType.FormSchemaTableFromModel(), CompareAttributes.TableName);
                 }
             }
+
+            if (!_designTimeModel.GetEntityTypes().Any())
+                return _hasErrors;
+
+            var tableNames = _designTimeModel.GetEntityTypes().Select(x => x.GetSchemaQualifiedTableName()).ToList();
+
+            var dbCheckConstraints = _dbContext.Database.SqlQuery<CheckConstraint>(
+                FormattableStringFactory.Create(
+                    $$"""
+                      SELECT
+                          tc.table_name,
+                          cc.constraint_name,
+                          cc.check_clause
+                      FROM 
+                          information_schema.table_constraints tc
+                      JOIN 
+                          information_schema.check_constraints cc 
+                          ON tc.constraint_name = cc.constraint_name
+                      WHERE 
+                          tc.constraint_type = 'CHECK'
+                          AND table_name IN ({{String.Join(", ", tableNames.Select((_, i) => $$"""{{{i}}}"""))}})
+                          AND (cc.check_clause NOT LIKE '% IS NOT NULL' AND cc.constraint_name NOT LIKE '%_not_null') -- exclude default not null constraints
+                      ORDER BY cc.constraint_name
+                      """,
+                    tableNames.Cast<object>().ToArray()
+                )
+            ).ToList();
+
+            var designTimeTables = _designTimeModel.GetRelationalModel().Tables.ToList();
+            var modelCheckConstraints = designTimeTables
+                .SelectMany(t => t.CheckConstraints.Select(cc => new CheckConstraint
+                {
+                    TableName = t.Name,
+                    ConstraintName = cc.Name,
+                    CheckClause = $"(({cc.Sql}))"
+                }))
+                .OrderBy(c => c.ConstraintName)
+                .ToList();
+
+            var extraDbConstraints = dbCheckConstraints.Except(modelCheckConstraints).ToList();
+            if (extraDbConstraints.Any())
+                foreach (CheckConstraint cc in extraDbConstraints)
+                    dbLogger.ExtraInDatabase(cc.GetCompareText(), CompareAttributes.CheckConstraint);
+
+            var missingInDb = modelCheckConstraints.Except(dbCheckConstraints).ToList();
+            if (missingInDb.Any())
+                foreach (CheckConstraint cc in missingInDb)
+                    dbLogger.NotInDatabase(cc.GetCompareText(), CompareAttributes.CheckConstraint);
 
             return _hasErrors;
         }
@@ -406,5 +459,22 @@ namespace EfSchemaCompare.Internal
             return columnName;
         }
 
+    }
+
+    public record CheckConstraint
+    {
+        [Column("table_name")]
+        public string TableName { get; init; }
+
+        [Column("constraint_name")]
+        public string ConstraintName { get; init; }
+
+        [Column("check_clause")]
+        public string CheckClause { get; init; }
+
+        public string GetCompareText()
+        {
+            return $"{TableName} {ConstraintName} {CheckClause}";
+        }
     }
 }
