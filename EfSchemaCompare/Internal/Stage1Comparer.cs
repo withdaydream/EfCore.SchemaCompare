@@ -36,6 +36,8 @@ namespace EfSchemaCompare.Internal
         private bool _hasErrors;
 
         private readonly List<CompareLog> _logs;
+        private readonly ICheckConstraintReader _checkConstraintReader;
+        private readonly IDatabaseColumnFormatter _databaseColumnFormatter;
         public IReadOnlyList<CompareLog> Logs => _logs.ToImmutableList();
 
         public Stage1Comparer(DbContext context, CompareEfSqlConfig config = null, List<CompareLog> logs = null)
@@ -49,6 +51,10 @@ namespace EfSchemaCompare.Internal
             _ignoreList = config?.LogsToIgnore ?? new List<CompareLog>();
             _caseComparer = StringComparer.CurrentCulture;          //Turned off CaseComparer as doesn't work with EF Core 5
             _caseComparison = _caseComparer.GetStringComparison();
+
+            // TODO: Inject the correct implementation for the correct DB if we ever need.
+            _checkConstraintReader = new PostgresCheckConstraintReader();
+            _databaseColumnFormatter = new PostgresDatabaseColumnFormatter();
         }
 
         public bool CompareModelToDatabase(DatabaseModel databaseModel)
@@ -113,49 +119,17 @@ namespace EfSchemaCompare.Internal
             if (!_designTimeModel.GetEntityTypes().Any())
                 return _hasErrors;
 
-            var tableNames = _designTimeModel.GetEntityTypes().Select(x => x.GetSchemaQualifiedTableName()).ToList();
-
-            var dbCheckConstraints = _dbContext.Database.SqlQuery<CheckConstraint>(
-                FormattableStringFactory.Create(
-                    $$"""
-                      SELECT
-                          tc.table_name,
-                          cc.constraint_name,
-                          cc.check_clause
-                      FROM 
-                          information_schema.table_constraints tc
-                      JOIN 
-                          information_schema.check_constraints cc 
-                          ON tc.constraint_name = cc.constraint_name
-                      WHERE 
-                          tc.constraint_type = 'CHECK'
-                          AND table_name IN ({{String.Join(", ", tableNames.Select((_, i) => $$"""{{{i}}}"""))}})
-                          AND (cc.check_clause NOT LIKE '% IS NOT NULL' AND cc.constraint_name NOT LIKE '%_not_null') -- exclude default not null constraints
-                      ORDER BY cc.constraint_name
-                      """,
-                    tableNames.Cast<object>().ToArray()
-                )
-            ).ToList();
-
-            var designTimeTables = _designTimeModel.GetRelationalModel().Tables.ToList();
-            var modelCheckConstraints = designTimeTables
-                .SelectMany(t => t.CheckConstraints.Select(cc => new CheckConstraint
-                {
-                    TableName = t.Name,
-                    ConstraintName = cc.Name,
-                    CheckClause = $"(({cc.Sql}))"
-                }))
-                .OrderBy(c => c.ConstraintName)
-                .ToList();
+            var dbCheckConstraints = _checkConstraintReader.GetCheckConstraints(_dbContext);
+            var modelCheckConstraints = _designTimeModel.GetCheckConstraints();
 
             var extraDbConstraints = dbCheckConstraints.Except(modelCheckConstraints).ToList();
             if (extraDbConstraints.Any())
-                foreach (CheckConstraint cc in extraDbConstraints)
+                foreach (ICheckConstraintReader.Constraint cc in extraDbConstraints)
                     dbLogger.ExtraInDatabase(cc.GetCompareText(), CompareAttributes.CheckConstraint);
 
             var missingInDb = modelCheckConstraints.Except(dbCheckConstraints).ToList();
             if (missingInDb.Any())
-                foreach (CheckConstraint cc in missingInDb)
+                foreach (ICheckConstraintReader.Constraint cc in missingInDb)
                     dbLogger.NotInDatabase(cc.GetCompareText(), CompareAttributes.CheckConstraint);
 
             return _hasErrors;
@@ -382,7 +356,7 @@ namespace EfSchemaCompare.Internal
         private bool ComparePropertyToColumn(IColumnBase relColumn, CompareLogger2 logger, 
             IProperty property, DatabaseColumn column, bool isView, bool isOwned)
         {
-            var error = logger.CheckDifferent(property.GetColumnType(), column.StoreType, CompareAttributes.ColumnType, _caseComparison);
+            var error = logger.CheckDifferent(property.GetColumnType(), _databaseColumnFormatter.GetColumnType(column), CompareAttributes.ColumnType, _caseComparison);
             error |= logger.CheckDifferent(relColumn.IsNullable.NullableAsString(), 
                 column.IsNullable.NullableAsString(), CompareAttributes.Nullability, _caseComparison);
             error |= logger.CheckDifferent(property.GetComputedColumnSql().RemoveUnnecessaryBrackets(),
@@ -461,20 +435,5 @@ namespace EfSchemaCompare.Internal
 
     }
 
-    public record CheckConstraint
-    {
-        [Column("table_name")]
-        public string TableName { get; init; }
 
-        [Column("constraint_name")]
-        public string ConstraintName { get; init; }
-
-        [Column("check_clause")]
-        public string CheckClause { get; init; }
-
-        public string GetCompareText()
-        {
-            return $"{TableName} {ConstraintName} {CheckClause}";
-        }
-    }
 }
