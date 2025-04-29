@@ -10,7 +10,7 @@ public class PostgresCheckConstraintReader : ICheckConstraintReader
 {
     public IReadOnlyList<ICheckConstraintReader.Constraint> GetCheckConstraints(DbContext dbContext)
     {
-        var tableNames = dbContext.Model.GetEntityTypes().Select(x => x.GetSchemaQualifiedTableName()).ToList();
+        var tableNames = dbContext.Model.GetEntityTypes().Select(object (x) => x.GetSchemaQualifiedTableName()).ToList();
 
         return dbContext.Database.SqlQuery<ICheckConstraintReader.Constraint>(
             FormattableStringFactory.Create(
@@ -30,7 +30,7 @@ public class PostgresCheckConstraintReader : ICheckConstraintReader
                       AND (cc.check_clause NOT LIKE '% IS NOT NULL' AND cc.constraint_name NOT LIKE '%_not_null') -- exclude default not null constraints
                   ORDER BY cc.constraint_name
                   """,
-                tableNames.Cast<object>().ToArray()
+                tableNames.ToArray()
             )
         ).ToList();
     }
