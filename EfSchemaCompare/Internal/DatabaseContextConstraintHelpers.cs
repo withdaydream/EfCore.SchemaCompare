@@ -36,7 +36,7 @@ public static class DatabaseContextConstraintHelpers
                 ForeignTableName = cc.PrincipalTable.Name,
                 ColumnName = String.Join(", ", cc.Columns.Select(c => c.Name)),
                 ForeignColumnName = String.Join(", ", cc.PrincipalColumns.Select(c => c.Name)),
-                OnUpdate = GetActionName(ReferentialAction.NoAction), // No EF support for OnUpdate.
+                OnUpdate = GetActionName(ReferentialAction.NoAction), // No EF support for OnUpdate. Ref: https://stackoverflow.com/a/57434214.
                 OnDelete = GetActionName(cc.OnDeleteAction)
             }))
             .OrderBy(c => c.ConstraintName)
