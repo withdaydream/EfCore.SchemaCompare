@@ -170,6 +170,111 @@ NOT IN DATABASE: Entity 'Review', table name. Expected = Schema2.SchemaTest");
         hasErrors.ShouldBeTrue();
         comparer.GetAllErrors.ShouldEqual(@"NOT IN DATABASE: Entity 'Author', table name. Expected = Schema1.SchemaTest
 NOT IN DATABASE: Entity 'Book', table name. Expected = SchemaTest
-NOT IN DATABASE: Entity 'Review', table name. Expected = Schema2.SchemaTest");
+NOT IN DATABASE: Entity 'Review', table name. Expected = Schema2.SchemaTest
+DIFFERENT: DbContext 'FK_SchemaTest_SchemaTest_AuthorId', foreign key. Expected = FK_SchemaTest_SchemaTest_AuthorId Table(SchemaTest) Columns(AuthorId) ForeignTable(Schema1.SchemaTest) ForeignColumns(AuthorId) OnDelete(CASCADE), found = FK_SchemaTest_SchemaTest_AuthorId Table(SchemaTest) Columns(AuthorId) ForeignTable(SchemaTest) ForeignColumns(AuthorId) OnDelete(CASCADE)
+DIFFERENT: DbContext 'FK_SchemaTest_SchemaTest_ReviewId', foreign key. Expected = FK_SchemaTest_SchemaTest_ReviewId Table(SchemaTest) Columns(ReviewId) ForeignTable(Schema2.SchemaTest) ForeignColumns(ReviewId) OnDelete(NO ACTION), found = FK_SchemaTest_SchemaTest_ReviewId Table(SchemaTest) Columns(ReviewId) ForeignTable(SchemaTest) ForeignColumns(ReviewId) OnDelete(NO ACTION)");
+    }
+
+    [Fact]
+    public void CompareEfPostgreSqlCheckConstraintsNotInDatabase()
+    {
+        //SETUP
+        var postgresConnectionString = this.GetUniquePostgreSqlConnectionString();
+        var builder = new
+            DbContextOptionsBuilder<CheckConstraintsContext>();
+        builder.UseNpgsql(postgresConnectionString);
+        using var context = new CheckConstraintsContext(builder.Options);
+        context.Database.EnsureDeleted();
+        context.Database.EnsureCreated();
+
+        // Remove constraint to cause comparison error.
+        context.Database.ExecuteSqlRaw(
+            """
+            ALTER TABLE public."Book"
+            DROP CONSTRAINT "CK_book_CheckConstraint";
+            """
+        );
+
+        var config = new CompareEfSqlConfig();
+        var comparer = new CompareEfSql(config);
+
+        //ATTEMPT
+        var hasErrors = comparer.CompareEfWithDb(postgresConnectionString, context);
+
+        //VERIFY
+        _output.WriteLine(comparer.GetAllErrors);
+        hasErrors.ShouldBeTrue();
+        comparer.GetAllErrors.ShouldEqual(@"NOT IN DATABASE: DbContext 'CheckConstraintsContext', check constraint. Expected = Book CK_book_CheckConstraint (((""Title"" IS NOT NULL) = (""PublishedOn"" IS NOT NULL)))");
+    }
+
+    [Fact]
+    public void CompareEfPostgreSqlCheckConstraintsExtraInDatabase()
+    {
+        //SETUP
+        var postgresConnectionString = this.GetUniquePostgreSqlConnectionString();
+        var builder = new
+            DbContextOptionsBuilder<CheckConstraintsContext>();
+        builder.UseNpgsql(postgresConnectionString);
+        using var context = new CheckConstraintsContext(builder.Options);
+        context.Database.EnsureDeleted();
+        context.Database.EnsureCreated();
+
+        // Remove constraint to cause comparison error.
+        context.Database.ExecuteSqlRaw(
+            """
+            ALTER TABLE public."Book"
+            ADD CONSTRAINT CK_New_One
+            CHECK ("Description" IS NOT NULL);
+            """
+        );
+
+        var config = new CompareEfSqlConfig();
+        var comparer = new CompareEfSql(config);
+
+        //ATTEMPT
+        var hasErrors = comparer.CompareEfWithDb(postgresConnectionString, context);
+
+        //VERIFY
+        _output.WriteLine(comparer.GetAllErrors);
+        hasErrors.ShouldBeTrue();
+        comparer.GetAllErrors.ShouldEqual(@"EXTRA IN DATABASE: DbContext 'CheckConstraintsContext', check constraint. Found = Book ck_new_one ((""Description"" IS NOT NULL))");
+    }
+
+    [Fact]
+    public void CompareEfPostgreSqlFkWithNoDeleteAction()
+    {
+        //SETUP
+        var postgresConnectionString = this.GetUniquePostgreSqlConnectionString();
+        var builder = new
+            DbContextOptionsBuilder<CheckConstraintsContext>();
+        builder.UseNpgsql(postgresConnectionString);
+        using var context = new CheckConstraintsContext(builder.Options);
+        context.Database.EnsureDeleted();
+        context.Database.EnsureCreated();
+
+        // Update constraint to cause comparison error.
+        context.Database.ExecuteSqlRaw(
+            """
+            ALTER TABLE IF EXISTS public."Book" 
+                DROP CONSTRAINT IF EXISTS "FK_Book_Author_AuthorId";
+
+            ALTER TABLE IF EXISTS public."Book"
+                ADD CONSTRAINT "FK_Book_Author_AuthorId" FOREIGN KEY ("AuthorId")
+                REFERENCES public."Author" ("AuthorId") MATCH SIMPLE
+                ON UPDATE NO ACTION
+                ON DELETE NO ACTION;
+            """
+        );
+
+        var config = new CompareEfSqlConfig();
+        var comparer = new CompareEfSql(config);
+
+        //ATTEMPT
+        var hasErrors = comparer.CompareEfWithDb(postgresConnectionString, context);
+
+        //VERIFY
+        _output.WriteLine(comparer.GetAllErrors);
+        hasErrors.ShouldBeTrue();
+        comparer.GetAllErrors.ShouldEqual(@"DIFFERENT: DbContext 'FK_Book_Author_AuthorId', foreign key. Expected = FK_Book_Author_AuthorId Table(Book) Columns(AuthorId) ForeignTable(Author) ForeignColumns(AuthorId) OnDelete(NO ACTION), found = FK_Book_Author_AuthorId Table(Book) Columns(AuthorId) ForeignTable(Author) ForeignColumns(AuthorId) OnDelete(CASCADE)");
     }
 }

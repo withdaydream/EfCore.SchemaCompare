@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,8 @@ namespace EfSchemaCompare.Internal
     {
         private const string NoPrimaryKey = "- no primary key -";
 
+        private readonly DbContext _dbContext;
+        private readonly IModel _designTimeModel;
         private readonly IModel _model;
         private readonly string _dbContextName;
         private readonly IRelationalTypeMappingSource _relationalTypeMapping;
@@ -33,10 +36,14 @@ namespace EfSchemaCompare.Internal
         private bool _hasErrors;
 
         private readonly List<CompareLog> _logs;
+        private readonly IConstraintReader _constraintReader;
+        private readonly IDatabaseColumnFormatter _databaseColumnFormatter;
         public IReadOnlyList<CompareLog> Logs => _logs.ToImmutableList();
 
         public Stage1Comparer(DbContext context, CompareEfSqlConfig config = null, List<CompareLog> logs = null)
         {
+            _dbContext = context;
+            _designTimeModel = context.GetService<IDesignTimeModel>().Model;
             _model = context.Model;
             _dbContextName = context.GetType().Name;
             _relationalTypeMapping = context.GetService<IRelationalTypeMappingSource>();
@@ -44,6 +51,10 @@ namespace EfSchemaCompare.Internal
             _ignoreList = config?.LogsToIgnore ?? new List<CompareLog>();
             _caseComparer = StringComparer.CurrentCulture;          //Turned off CaseComparer as doesn't work with EF Core 5
             _caseComparison = _caseComparer.GetStringComparison();
+
+            // TODO: Inject the correct implementation for the correct DB if we ever need.
+            _constraintReader = new PostgresConstraintReader();
+            _databaseColumnFormatter = new PostgresDatabaseColumnFormatter();
         }
 
         public bool CompareModelToDatabase(DatabaseModel databaseModel)
@@ -60,9 +71,9 @@ namespace EfSchemaCompare.Internal
                 Where(x => x.FormSchemaTableFromModel() == null).ToList();
             if (entitiesNotMappedToTableOrView.Any())
                 dbLogger.MarkAsNotChecked(null, string.
-                    Join(", ", entitiesNotMappedToTableOrView.Select(x => x.ClrType.Name)), 
+                    Join(", ", entitiesNotMappedToTableOrView.Select(x => x.ClrType.Name)),
                     CompareAttributes.NotMappedToDatabase);
-            
+
             #region JsonMapping
             //Json Mapping Start----------------------------------------------------------------------------
             //Get a list of entities that are using Json Mapping. 
@@ -104,6 +115,16 @@ namespace EfSchemaCompare.Internal
                     logger.NotInDatabase(entityType.FormSchemaTableFromModel(), CompareAttributes.TableName);
                 }
             }
+
+            var dbCheckConstraints = _constraintReader.GetCheckConstraints(_dbContext);
+            var modelCheckConstraints = _designTimeModel.GetCheckConstraints();
+
+            var dbForeignKeyConstraints = _constraintReader.GetForeignKeyConstraints(_dbContext);
+            var modelForeignKeys = _designTimeModel.GetForeignKeyConstraints();
+
+            var constraintComparer = new ConstraintComparer(dbLogger);
+            constraintComparer.Compare(dbCheckConstraints, modelCheckConstraints, CompareAttributes.CheckConstraint);
+            constraintComparer.Compare(dbForeignKeyConstraints, modelForeignKeys, CompareAttributes.ForeignKey);
 
             return _hasErrors;
         }
@@ -329,7 +350,7 @@ namespace EfSchemaCompare.Internal
         private bool ComparePropertyToColumn(IColumnBase relColumn, CompareLogger2 logger, 
             IProperty property, DatabaseColumn column, bool isView, bool isOwned)
         {
-            var error = logger.CheckDifferent(property.GetColumnType(), column.StoreType, CompareAttributes.ColumnType, _caseComparison);
+            var error = logger.CheckDifferent(property.GetColumnType(), _databaseColumnFormatter.GetColumnType(column), CompareAttributes.ColumnType, _caseComparison);
             error |= logger.CheckDifferent(relColumn.IsNullable.NullableAsString(), 
                 column.IsNullable.NullableAsString(), CompareAttributes.Nullability, _caseComparison);
             error |= logger.CheckDifferent(property.GetComputedColumnSql().RemoveUnnecessaryBrackets(),
