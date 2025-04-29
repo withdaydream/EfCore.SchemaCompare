@@ -116,9 +116,6 @@ namespace EfSchemaCompare.Internal
                 }
             }
 
-            if (!_designTimeModel.GetEntityTypes().Any())
-                return _hasErrors;
-
             var dbCheckConstraints = _checkConstraintReader.GetCheckConstraints(_dbContext);
             var modelCheckConstraints = _designTimeModel.GetCheckConstraints();
 
