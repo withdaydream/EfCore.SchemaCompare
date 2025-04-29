@@ -20,8 +20,8 @@
 	
   <PropertyGroup>
     <PackageId>EfCore.SchemaCompare</PackageId>
-    <PackageVersion>9.2.0-daydream</PackageVersion>
-    <Version>9.2.0-daydream</Version>
+    <PackageVersion>9.2.1-daydream</PackageVersion>
+    <Version>9.2.1-daydream</Version>
     <Authors>Jon P Smith</Authors>
     <Description>Useful tool if you  are changing the schema of your database's schema outside of EF Core' migrations, say by using SQL change scripts. See readme file on github.</Description>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
