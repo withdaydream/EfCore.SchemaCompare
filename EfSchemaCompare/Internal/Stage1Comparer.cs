@@ -36,7 +36,7 @@ namespace EfSchemaCompare.Internal
         private bool _hasErrors;
 
         private readonly List<CompareLog> _logs;
-        private readonly ICheckConstraintReader _checkConstraintReader;
+        private readonly IConstraintReader _constraintReader;
         private readonly IDatabaseColumnFormatter _databaseColumnFormatter;
         public IReadOnlyList<CompareLog> Logs => _logs.ToImmutableList();
 
@@ -53,7 +53,7 @@ namespace EfSchemaCompare.Internal
             _caseComparison = _caseComparer.GetStringComparison();
 
             // TODO: Inject the correct implementation for the correct DB if we ever need.
-            _checkConstraintReader = new PostgresCheckConstraintReader();
+            _constraintReader = new PostgresConstraintReader();
             _databaseColumnFormatter = new PostgresDatabaseColumnFormatter();
         }
 
@@ -116,18 +116,31 @@ namespace EfSchemaCompare.Internal
                 }
             }
 
-            var dbCheckConstraints = _checkConstraintReader.GetCheckConstraints(_dbContext);
+            var dbCheckConstraints = _constraintReader.GetCheckConstraints(_dbContext);
             var modelCheckConstraints = _designTimeModel.GetCheckConstraints();
 
             var extraDbConstraints = dbCheckConstraints.Except(modelCheckConstraints).ToList();
             if (extraDbConstraints.Any())
-                foreach (ICheckConstraintReader.Constraint cc in extraDbConstraints)
+                foreach (IConstraintReader.Constraint cc in extraDbConstraints)
                     dbLogger.ExtraInDatabase(cc.GetCompareText(), CompareAttributes.CheckConstraint);
 
             var missingInDb = modelCheckConstraints.Except(dbCheckConstraints).ToList();
             if (missingInDb.Any())
-                foreach (ICheckConstraintReader.Constraint cc in missingInDb)
+                foreach (IConstraintReader.Constraint cc in missingInDb)
                     dbLogger.NotInDatabase(cc.GetCompareText(), CompareAttributes.CheckConstraint);
+
+            var dbForeignKeyConstraints = _constraintReader.GetForeignKeyConstraints(_dbContext);
+            var modelForeignKeys = _designTimeModel.GetForeignKeyConstraints();
+
+            var extraFkConstraints = dbForeignKeyConstraints.Except(modelForeignKeys).ToList();
+            if (extraFkConstraints.Any())
+                foreach (IConstraintReader.ForeignKey c in extraFkConstraints)
+                    dbLogger.ExtraInDatabase(c.GetCompareText(), CompareAttributes.ForeignKey);
+
+            var missingFkInDb = modelForeignKeys.Except(dbForeignKeyConstraints).ToList();
+            if (missingFkInDb.Any())
+                foreach (IConstraintReader.ForeignKey c in missingFkInDb)
+                    dbLogger.NotInDatabase(c.GetCompareText(), CompareAttributes.ForeignKey);
 
             return _hasErrors;
         }
