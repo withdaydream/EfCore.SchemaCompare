@@ -8,11 +8,11 @@ namespace EfSchemaCompare.Internal;
 
 public class PostgresConstraintReader : IConstraintReader
 {
-    public IReadOnlyList<IConstraintReader.Constraint> GetCheckConstraints(DbContext dbContext)
+    public IReadOnlyList<IConstraintReader.CheckConstraint> GetCheckConstraints(DbContext dbContext)
     {
         var tableNames = dbContext.Model.GetEntityTypes().Select(object (x) => x.GetSchemaQualifiedTableName()).ToList();
 
-        return dbContext.Database.SqlQuery<IConstraintReader.Constraint>(
+        return dbContext.Database.SqlQuery<IConstraintReader.CheckConstraint>(
             FormattableStringFactory.Create(
                 $$"""
                   SELECT
@@ -35,11 +35,11 @@ public class PostgresConstraintReader : IConstraintReader
         ).ToList();
     }
 
-    public IReadOnlyList<IConstraintReader.ForeignKey> GetForeignKeyConstraints(DbContext dbContext)
+    public IReadOnlyList<IConstraintReader.ForeignKeyConstraint> GetForeignKeyConstraints(DbContext dbContext)
     {
         var tableNames = dbContext.Model.GetEntityTypes().Select(object (x) => x.GetSchemaQualifiedTableName()).ToList();
 
-        return dbContext.Database.SqlQuery<IConstraintReader.ForeignKey>(
+        return dbContext.Database.SqlQuery<IConstraintReader.ForeignKeyConstraint>(
             FormattableStringFactory.Create(
                 $$"""
                   SELECT 

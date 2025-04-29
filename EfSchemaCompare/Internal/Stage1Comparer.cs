@@ -119,28 +119,12 @@ namespace EfSchemaCompare.Internal
             var dbCheckConstraints = _constraintReader.GetCheckConstraints(_dbContext);
             var modelCheckConstraints = _designTimeModel.GetCheckConstraints();
 
-            var extraDbConstraints = dbCheckConstraints.Except(modelCheckConstraints).ToList();
-            if (extraDbConstraints.Any())
-                foreach (IConstraintReader.Constraint cc in extraDbConstraints)
-                    dbLogger.ExtraInDatabase(cc.GetCompareText(), CompareAttributes.CheckConstraint);
-
-            var missingInDb = modelCheckConstraints.Except(dbCheckConstraints).ToList();
-            if (missingInDb.Any())
-                foreach (IConstraintReader.Constraint cc in missingInDb)
-                    dbLogger.NotInDatabase(cc.GetCompareText(), CompareAttributes.CheckConstraint);
-
             var dbForeignKeyConstraints = _constraintReader.GetForeignKeyConstraints(_dbContext);
             var modelForeignKeys = _designTimeModel.GetForeignKeyConstraints();
 
-            var extraFkConstraints = dbForeignKeyConstraints.Except(modelForeignKeys).ToList();
-            if (extraFkConstraints.Any())
-                foreach (IConstraintReader.ForeignKey c in extraFkConstraints)
-                    dbLogger.ExtraInDatabase(c.GetCompareText(), CompareAttributes.ForeignKey);
-
-            var missingFkInDb = modelForeignKeys.Except(dbForeignKeyConstraints).ToList();
-            if (missingFkInDb.Any())
-                foreach (IConstraintReader.ForeignKey c in missingFkInDb)
-                    dbLogger.NotInDatabase(c.GetCompareText(), CompareAttributes.ForeignKey);
+            var constraintComparer = new ConstraintComparer(dbLogger);
+            constraintComparer.Compare(dbCheckConstraints, modelCheckConstraints, CompareAttributes.CheckConstraint);
+            constraintComparer.Compare(dbForeignKeyConstraints, modelForeignKeys, CompareAttributes.ForeignKey);
 
             return _hasErrors;
         }

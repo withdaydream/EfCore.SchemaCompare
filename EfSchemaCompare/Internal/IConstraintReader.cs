@@ -6,11 +6,19 @@ namespace EfSchemaCompare.Internal;
 
 public interface IConstraintReader
 {
-    IReadOnlyList<Constraint> GetCheckConstraints(DbContext dbContext);
+    IReadOnlyList<CheckConstraint> GetCheckConstraints(DbContext dbContext);
 
-    IReadOnlyList<ForeignKey> GetForeignKeyConstraints(DbContext dbContext);
+    IReadOnlyList<ForeignKeyConstraint> GetForeignKeyConstraints(DbContext dbContext);
 
-    public record Constraint
+    public interface IConstraint
+    {
+        [Column("constraint_name")]
+        string ConstraintName { get; }
+
+        string GetCompareText();
+    }
+
+    public record CheckConstraint : IConstraint
     {
         [Column("table_name")]
         public required string TableName { get; init; }
@@ -27,7 +35,7 @@ public interface IConstraintReader
         }
     }
 
-    public record ForeignKey
+    public record ForeignKeyConstraint : IConstraint
     {
         [Column("table_name")]
         public required string TableName { get; init; }

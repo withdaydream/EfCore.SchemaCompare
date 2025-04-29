@@ -9,12 +9,12 @@ namespace EfSchemaCompare.Internal;
 
 public static class DatabaseContextConstraintHelpers
 {
-    public static IReadOnlyList<IConstraintReader.Constraint> GetCheckConstraints(this IModel model)
+    public static IReadOnlyList<IConstraintReader.CheckConstraint> GetCheckConstraints(this IModel model)
     {
         return model
             .GetRelationalModel()
             .Tables
-            .SelectMany(t => t.CheckConstraints.Select(cc => new IConstraintReader.Constraint
+            .SelectMany(t => t.CheckConstraints.Select(cc => new IConstraintReader.CheckConstraint
             {
                 TableName = t.Name,
                 ConstraintName = cc.Name,
@@ -24,12 +24,12 @@ public static class DatabaseContextConstraintHelpers
             .ToList();
     }
 
-    public static IReadOnlyList<IConstraintReader.ForeignKey> GetForeignKeyConstraints(this IModel model)
+    public static IReadOnlyList<IConstraintReader.ForeignKeyConstraint> GetForeignKeyConstraints(this IModel model)
     {
         return model
             .GetRelationalModel()
             .Tables
-            .SelectMany(t => t.ForeignKeyConstraints.Select(cc => new IConstraintReader.ForeignKey
+            .SelectMany(t => t.ForeignKeyConstraints.Select(cc => new IConstraintReader.ForeignKeyConstraint
             {
                 TableName = t.Name,
                 ConstraintName = cc.Name,
