@@ -44,7 +44,7 @@ public class TestExtraInDatabase
         var filepath1 = TestData.GetFilePath("RenameColumn.sql");
         context.ExecuteScriptFileInTransaction(filepath1);
         //Stage 2 error: Add new table
-        var filepath2 = TestData.GetFilePath("AddExtraTable.sql");
+        var filepath2 = TestData.GetFilePath("AddExtraColumn.sql");
         context.ExecuteScriptFileInTransaction(filepath2);
 
         //ATTEMPT
@@ -75,7 +75,7 @@ public class TestExtraInDatabase
         context.Database.EnsureClean();
 
         //Add new table
-        var filepath = TestData.GetFilePath("AddExtraTable.sql");
+        var filepath = TestData.GetFilePath("AddExtraColumn.sql");
         context.ExecuteScriptFileInTransaction(filepath);
 
         //ATTEMPT
@@ -89,7 +89,7 @@ public class TestExtraInDatabase
         //VERIFY
         hasErrors.ShouldBeTrue();
         comparer.GetAllErrors.ShouldEqual(
-            "EXTRA IN DATABASE: EfCore.SchemaCompare-Test_TestExtraInDatabase->Table 'ExtraTable'");
+            "EXTRA IN DATABASE: Column 'Books', column name. Found = ExtraTable");
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class TestExtraInDatabase
         context.Database.EnsureClean();
 
         //Add new table
-        var filepath = TestData.GetFilePath("AddExtraTable.sql");
+        var filepath = TestData.GetFilePath("AddExtraColumn.sql");
         context.ExecuteScriptFileInTransaction(filepath);
 
         //ATTEMPT
@@ -110,7 +110,7 @@ public class TestExtraInDatabase
             TablesToIgnoreCommaDelimited = "",
         };
         config.IgnoreTheseErrors(
-            "EXTRA IN DATABASE: EfCore.SchemaCompare-Test_TestExtraInDatabase->Table 'ExtraTable'");
+            "EXTRA IN DATABASE: Column 'Books', column name. Found = ExtraTable");
         var comparer = new CompareEfSql(config);
         var hasErrors = comparer.CompareEfWithDb(context);
 
@@ -141,7 +141,7 @@ public class TestExtraInDatabase
         //VERIFY
         hasErrors.ShouldBeTrue();
         comparer.GetAllErrors.ShouldEqual(
-            "EXTRA IN DATABASE: Column 'Books', column name. Found = ExtraColumn");
+            "EXTRA IN DATABASE: Column 'Books', column name. Found = ExtraTable");
     }
 
     [Fact]
