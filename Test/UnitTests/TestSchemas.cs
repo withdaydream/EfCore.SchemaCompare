@@ -335,6 +335,36 @@ DIFFERENT: DbContext 'SchemaDbContext', foreign key. Expected = FK_SchemaTest_Sc
         Assert.Contains("CK_check_normalization_status", comparer.GetAllErrors);
     }
 
+    [Fact]
+    public void CompareEfPostgreSqlReportsIndexNameMismatchEvenWhenStructureMatches()
+    {
+        //SETUP
+        var postgresConnectionString = this.GetUniquePostgreSqlConnectionString();
+        var builder = new
+            DbContextOptionsBuilder<PostgreSqlConstraintNormalizationContext>();
+        builder.UseNpgsql(postgresConnectionString);
+        using var context = new PostgreSqlConstraintNormalizationContext(builder.Options);
+        context.Database.EnsureDeleted();
+        context.Database.EnsureCreated();
+
+        context.Database.ExecuteSqlRaw(
+            """
+            ALTER INDEX public."IX_check_normalization_record_status"
+            RENAME TO "IX_check_normalization_record_status_renamed";
+            """
+        );
+
+        var comparer = new CompareEfSql();
+
+        //ATTEMPT
+        var hasErrors = comparer.CompareEfWithDb(postgresConnectionString, context);
+
+        //VERIFY
+        _output.WriteLine(comparer.GetAllErrors);
+        hasErrors.ShouldBeTrue();
+        Assert.Contains("NOT IN DATABASE: CheckNormalizationRecord->Index 'status', index constraint name. Expected = IX_check_normalization_record_status", comparer.GetAllErrors);
+    }
+
     private class PostgreSqlConstraintNormalizationContext : DbContext
     {
         public PostgreSqlConstraintNormalizationContext(DbContextOptions<PostgreSqlConstraintNormalizationContext> options)

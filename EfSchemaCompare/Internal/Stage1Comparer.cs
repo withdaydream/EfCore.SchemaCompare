@@ -151,7 +151,7 @@ namespace EfSchemaCompare.Internal
             foreach (var entityFKey in entityType.ContainingEntityType.GetForeignKeys())
             {
                 var entityFKeyProps = entityFKey.Properties;
-                var constraintName = entityFKey.GetConstraintName();
+                var constraintName = GetForeignKeyConstraintName(entityFKey, table);
                 var logger = new CompareLogger2(CompareType.ForeignKey, constraintName, log.SubLogs, _ignoreList, () => _hasErrors = true);
                 if (IgnoreForeignKeyIfInSameTableOrTpT(entityType, entityFKey, table) 
                     || constraintName == null) //constraintName is null if the entity isn't linked to a table (some views are like that)
@@ -212,7 +212,7 @@ namespace EfSchemaCompare.Internal
                 var allColumnNames = string.Join(",", entityIdxprops
                     .Select(x => GetColumnNameTakingIntoAccountSchema(x, table)));
                 var logger = new CompareLogger2(CompareType.Index, allColumnNames, log.SubLogs, _ignoreList, () => _hasErrors = true);
-                var indexName = entityIdx.GetDatabaseName();
+                var indexName = GetIndexDatabaseName(entityIdx, table);
                 if (indexName != null && indexDict.ContainsKey(indexName))
                 {
                     //Now check every column in an index
@@ -426,6 +426,28 @@ namespace EfSchemaCompare.Internal
                 ? property.GetColumnName(StoreObjectIdentifier.View(table.Name, modelSchema))
                 : property.GetColumnName(StoreObjectIdentifier.Table(table.Name, modelSchema));
             return columnName;
+        }
+
+        private string GetForeignKeyConstraintName(IForeignKey foreignKey, DatabaseTable table)
+        {
+            var principalTableName = foreignKey.PrincipalEntityType.FormSchemaTableFromModel();
+            if (principalTableName == null || !_tableViewDict.TryGetValue(principalTableName, out var principalTable))
+                return foreignKey.GetConstraintName();
+
+            return foreignKey.GetConstraintName(
+                GetTableStoreObjectIdentifier(table),
+                GetTableStoreObjectIdentifier(principalTable));
+        }
+
+        private string GetIndexDatabaseName(IIndex index, DatabaseTable table)
+        {
+            return index.GetDatabaseName(GetTableStoreObjectIdentifier(table));
+        }
+
+        private StoreObjectIdentifier GetTableStoreObjectIdentifier(DatabaseTable table)
+        {
+            var modelSchema = table.Schema == _defaultSchema ? null : table.Schema;
+            return StoreObjectIdentifier.Table(table.Name, modelSchema);
         }
 
     }
