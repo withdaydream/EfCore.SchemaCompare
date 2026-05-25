@@ -280,4 +280,125 @@ NOT IN DATABASE: DbContext 'SchemaDbContext', foreign key. Expected = FK_SchemaT
         comparer.GetAllErrors.ShouldEqual(@"EXTRA IN DATABASE: DbContext 'CheckConstraintsContext', foreign key. Found = FK_Book_Author_AuthorId Table(Book) Columns(AuthorId) ForeignTable(Author) ForeignColumns(AuthorId) OnDelete(NO ACTION)
 NOT IN DATABASE: DbContext 'CheckConstraintsContext', foreign key. Expected = FK_Book_Author_AuthorId Table(Book) Columns(AuthorId) ForeignTable(Author) ForeignColumns(AuthorId) OnDelete(CASCADE)");
     }
+
+    [Fact]
+    public void CompareEfPostgreSqlNormalizesEquivalentCheckConstraints()
+    {
+        //SETUP
+        var postgresConnectionString = this.GetUniquePostgreSqlConnectionString();
+        var builder = new
+            DbContextOptionsBuilder<PostgreSqlConstraintNormalizationContext>();
+        builder.UseNpgsql(postgresConnectionString);
+        using var context = new PostgreSqlConstraintNormalizationContext(builder.Options);
+        context.Database.EnsureDeleted();
+        context.Database.EnsureCreated();
+
+        var comparer = new CompareEfSql();
+
+        //ATTEMPT
+        var hasErrors = comparer.CompareEfWithDb(postgresConnectionString, context);
+
+        //VERIFY
+        _output.WriteLine(comparer.GetAllErrors);
+        hasErrors.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void CompareEfPostgreSqlReportsDifferentCheckConstraintClauseWithSameName()
+    {
+        //SETUP
+        var postgresConnectionString = this.GetUniquePostgreSqlConnectionString();
+        var builder = new
+            DbContextOptionsBuilder<PostgreSqlConstraintNormalizationContext>();
+        builder.UseNpgsql(postgresConnectionString);
+        using var context = new PostgreSqlConstraintNormalizationContext(builder.Options);
+        context.Database.EnsureDeleted();
+        context.Database.EnsureCreated();
+
+        context.Database.ExecuteSqlRaw(
+            """
+            ALTER TABLE public.check_normalization_record
+            DROP CONSTRAINT "CK_check_normalization_status";
+
+            ALTER TABLE public.check_normalization_record
+            ADD CONSTRAINT "CK_check_normalization_status"
+            CHECK (status = 'IN_PROGRESS');
+            """
+        );
+
+        var comparer = new CompareEfSql();
+
+        //ATTEMPT
+        var hasErrors = comparer.CompareEfWithDb(postgresConnectionString, context);
+
+        //VERIFY
+        _output.WriteLine(comparer.GetAllErrors);
+        hasErrors.ShouldBeTrue();
+        Assert.Contains("DIFFERENT: DbContext 'PostgreSqlConstraintNormalizationContext', check constraint.", comparer.GetAllErrors);
+        Assert.Contains("CK_check_normalization_status", comparer.GetAllErrors);
+    }
+
+    private class PostgreSqlConstraintNormalizationContext : DbContext
+    {
+        public PostgreSqlConstraintNormalizationContext(DbContextOptions<PostgreSqlConstraintNormalizationContext> options)
+            : base(options) { }
+
+        public DbSet<CheckNormalizationRecord> Records { get; set; }
+        public DbSet<CheckNormalizationParent> Parents { get; set; }
+        public DbSet<CheckNormalizationChild> Children { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<CheckNormalizationRecord>(entity =>
+            {
+                entity.ToTable("check_normalization_record", table =>
+                {
+                    table.HasCheckConstraint("CK_check_normalization_status",
+                        "\"status\" IN ('IN_PROGRESS', 'CANCEL_REQUESTED')");
+                    table.HasCheckConstraint("CK_check_normalization_complete_status",
+                        "(\"complete_time\" IS NULL) = (\"status\" IN ('IN_PROGRESS', 'CANCEL_REQUESTED'))");
+                });
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Status).HasColumnName("status");
+                entity.Property(e => e.CompleteTime).HasColumnName("complete_time");
+                entity.HasIndex(e => e.Status).HasDatabaseName("IX_check_normalization_record_status");
+            });
+
+            modelBuilder.Entity<CheckNormalizationParent>(entity =>
+            {
+                entity.ToTable("check_normalization_parent");
+                entity.Property(e => e.Id).HasColumnName("id");
+            });
+
+            modelBuilder.Entity<CheckNormalizationChild>(entity =>
+            {
+                entity.ToTable("check_normalization_child");
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ParentId).HasColumnName("parent_id");
+                entity.HasOne(e => e.Parent)
+                    .WithMany()
+                    .HasForeignKey(e => e.ParentId)
+                    .HasConstraintName("FK_check_normalization_child_parent_parent_id");
+            });
+        }
+    }
+
+    private class CheckNormalizationRecord
+    {
+        public int Id { get; set; }
+        public string Status { get; set; }
+        public DateTime? CompleteTime { get; set; }
+    }
+
+    private class CheckNormalizationParent
+    {
+        public int Id { get; set; }
+    }
+
+    private class CheckNormalizationChild
+    {
+        public int Id { get; set; }
+        public int ParentId { get; set; }
+        public CheckNormalizationParent Parent { get; set; }
+    }
 }
