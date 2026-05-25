@@ -60,7 +60,7 @@ public interface IConstraintReader
 
         public string GetCompareText()
         {
-            return $"{ConstraintName} Table({TableName}) Columns({ColumnName}) ForeignTable({ForeignTableName}) ForeignColumns({ForeignColumnName}) OnDelete({OnDelete})";
+            return $"{ConstraintName} Table({TableName}) Columns({ColumnName}) ForeignTable({ForeignTableName}) ForeignColumns({ForeignColumnName}) OnUpdate({OnUpdate}) OnDelete({OnDelete})";
         }
     }
 }

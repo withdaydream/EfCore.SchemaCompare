@@ -25,6 +25,15 @@ internal class ConstraintComparer
             return;
         }
 
+        if (attributes == CompareAttributes.ForeignKey)
+        {
+            CompareForeignKeyConstraints(
+                dbConstraints.Cast<IConstraintReader.ForeignKeyConstraint>().ToList(),
+                modelConstraints.Cast<IConstraintReader.ForeignKeyConstraint>().ToList(),
+                attributes);
+            return;
+        }
+
         var extraInDbList = dbConstraints.Except(modelConstraints).ToList();
         if (extraInDbList.Any())
             foreach (IConstraintReader.IConstraint c in extraInDbList)
@@ -70,6 +79,29 @@ internal class ConstraintComparer
             if (!string.Equals(modelConstraint.CheckClause, dbConstraint.CheckClause, StringComparison.Ordinal))
                 _logger.CheckDifferent(modelConstraint.GetCompareText(), dbConstraint.GetCompareText(),
                     attributes, StringComparison.Ordinal);
+        }
+    }
+
+    private void CompareForeignKeyConstraints(IReadOnlyList<IConstraintReader.ForeignKeyConstraint> dbConstraints,
+        IReadOnlyList<IConstraintReader.ForeignKeyConstraint> modelConstraints, CompareAttributes attributes)
+    {
+        var dbByKey = dbConstraints.ToDictionary(c => new ConstraintKey(c.TableName, c.ConstraintName));
+        var modelByKey = modelConstraints.ToDictionary(c => new ConstraintKey(c.TableName, c.ConstraintName));
+
+        foreach (var dbConstraint in dbConstraints.Where(c => !modelByKey.ContainsKey(new ConstraintKey(c.TableName, c.ConstraintName))))
+            _logger.ExtraInDatabase(dbConstraint.GetCompareText(), attributes);
+
+        foreach (var modelConstraint in modelConstraints.Where(c => !dbByKey.ContainsKey(new ConstraintKey(c.TableName, c.ConstraintName))))
+            _logger.NotInDatabase(modelConstraint.GetCompareText(), attributes);
+
+        foreach (var modelConstraint in modelConstraints)
+        {
+            var key = new ConstraintKey(modelConstraint.TableName, modelConstraint.ConstraintName);
+            if (!dbByKey.TryGetValue(key, out var dbConstraint))
+                continue;
+
+            _logger.CheckDifferent(modelConstraint.GetCompareText(), dbConstraint.GetCompareText(),
+                attributes, StringComparison.Ordinal);
         }
     }
 
