@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Scaffolding.Metadata;
 
-namespace EfSchemaCompare.Internal;
+namespace EfSchemaCompare.Internal.Postgres;
 
 public class PostgresDatabaseColumnFormatter : IDatabaseColumnFormatter
 {

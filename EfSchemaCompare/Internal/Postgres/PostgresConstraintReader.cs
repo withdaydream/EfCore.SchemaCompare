@@ -4,7 +4,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 
-namespace EfSchemaCompare.Internal;
+namespace EfSchemaCompare.Internal.Postgres;
 
 public class PostgresConstraintReader : IConstraintReader
 {
