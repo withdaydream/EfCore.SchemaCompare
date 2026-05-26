@@ -34,7 +34,7 @@ namespace DataLayer.SchemaDb
         {
             builder
                 .ToTable(tableBuilder => tableBuilder
-                    .HasCheckConstraint("CK_book_CheckConstraint", "(\"Title\" IS NOT NULL) = (\"PublishedOn\" IS NOT NULL)"));
+                    .HasCheckConstraint("CK_book_CheckConstraint", "(\"Title\" IS NOT NULL AND \"PublishedOn\" IS NOT NULL) OR (\"Title\" IS NULL AND \"PublishedOn\" IS NULL)"));
         }
     }
 }

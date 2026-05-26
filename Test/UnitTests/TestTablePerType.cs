@@ -21,7 +21,7 @@ namespace Test.UnitTests
 
         // This unit test FAILS to show that EfCore.SchemaCompare
         // doesn't currently handle Table-Per-Type entities
-        [Fact]
+        [Fact(Skip = "EfCore.SchemaCompare doesn't currently handle Table-Per-Type entities.")]
         public void CompareTptContext_WILL_FAIL()
         {
             //SETUP

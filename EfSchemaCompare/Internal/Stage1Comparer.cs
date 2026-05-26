@@ -53,9 +53,15 @@ namespace EfSchemaCompare.Internal
             _caseComparer = StringComparer.CurrentCulture;          //Turned off CaseComparer as doesn't work with EF Core 5
             _caseComparison = _caseComparer.GetStringComparison();
 
-            // TODO: Inject the correct implementation for the correct DB if we ever need.
-            _constraintReader = new PostgresConstraintReader();
+            _constraintReader = CreateConstraintReader(context);
             _databaseColumnFormatter = new PostgresDatabaseColumnFormatter();
+        }
+
+        private static IConstraintReader CreateConstraintReader(DbContext context)
+        {
+            return string.Equals(context.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal)
+                ? new PostgresConstraintReader()
+                : new ModelConstraintReader();
         }
 
         public bool CompareModelToDatabase(DatabaseModel databaseModel)

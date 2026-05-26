@@ -109,9 +109,10 @@ public class TestSchemas
         //VERIFY
         _output.WriteLine(comparer.GetAllErrors);
         hasErrors.ShouldBeTrue();
-        comparer.GetAllErrors.ShouldEqual(@"NOT IN DATABASE: Entity 'Author', table name. Expected = Schema1.SchemaTest
-NOT IN DATABASE: Entity 'Book', table name. Expected = SchemaTest
-NOT IN DATABASE: Entity 'Review', table name. Expected = Schema2.SchemaTest");
+        comparer.GetAllErrors.ShouldEqual(string.Join(Environment.NewLine,
+            "NOT IN DATABASE: Entity 'Author', table name. Expected = Schema1.SchemaTest",
+            "NOT IN DATABASE: Entity 'Book', table name. Expected = SchemaTest",
+            "NOT IN DATABASE: Entity 'Review', table name. Expected = Schema2.SchemaTest"));
     }
 
     [Fact]
@@ -168,11 +169,12 @@ NOT IN DATABASE: Entity 'Review', table name. Expected = Schema2.SchemaTest");
         //VERIFY
         _output.WriteLine(comparer.GetAllErrors);
         hasErrors.ShouldBeTrue();
-        comparer.GetAllErrors.ShouldEqual(@"NOT IN DATABASE: Entity 'Author', table name. Expected = Schema1.SchemaTest
-NOT IN DATABASE: Entity 'Book', table name. Expected = SchemaTest
-NOT IN DATABASE: Entity 'Review', table name. Expected = Schema2.SchemaTest
-DIFFERENT: DbContext 'SchemaDbContext', foreign key. Expected = FK_SchemaTest_SchemaTest_AuthorId Table(SchemaTest) Columns(AuthorId) ForeignTable(SchemaTest) ForeignColumns(AuthorId) OnUpdate(NO ACTION) OnDelete(CASCADE), found = FK_SchemaTest_SchemaTest_AuthorId Table(SchemaTest) Columns(AuthorId) ForeignTable(Schema1.SchemaTest) ForeignColumns(AuthorId) OnUpdate(NO ACTION) OnDelete(CASCADE)
-DIFFERENT: DbContext 'SchemaDbContext', foreign key. Expected = FK_SchemaTest_SchemaTest_ReviewId Table(SchemaTest) Columns(ReviewId) ForeignTable(SchemaTest) ForeignColumns(ReviewId) OnUpdate(NO ACTION) OnDelete(NO ACTION), found = FK_SchemaTest_SchemaTest_ReviewId Table(SchemaTest) Columns(ReviewId) ForeignTable(Schema2.SchemaTest) ForeignColumns(ReviewId) OnUpdate(NO ACTION) OnDelete(NO ACTION)");
+        comparer.GetAllErrors.ShouldEqual(string.Join(Environment.NewLine,
+            "NOT IN DATABASE: Entity 'Author', table name. Expected = Schema1.SchemaTest",
+            "NOT IN DATABASE: Entity 'Book', table name. Expected = SchemaTest",
+            "NOT IN DATABASE: Entity 'Review', table name. Expected = Schema2.SchemaTest",
+            "DIFFERENT: DbContext 'SchemaDbContext', foreign key. Expected = FK_SchemaTest_SchemaTest_AuthorId Table(SchemaTest) Columns(AuthorId) ForeignTable(SchemaTest) ForeignColumns(AuthorId) OnUpdate(NO ACTION) OnDelete(CASCADE), found = FK_SchemaTest_SchemaTest_AuthorId Table(SchemaTest) Columns(AuthorId) ForeignTable(Schema1.SchemaTest) ForeignColumns(AuthorId) OnUpdate(NO ACTION) OnDelete(CASCADE)",
+            "DIFFERENT: DbContext 'SchemaDbContext', foreign key. Expected = FK_SchemaTest_SchemaTest_ReviewId Table(SchemaTest) Columns(ReviewId) ForeignTable(SchemaTest) ForeignColumns(ReviewId) OnUpdate(NO ACTION) OnDelete(NO ACTION), found = FK_SchemaTest_SchemaTest_ReviewId Table(SchemaTest) Columns(ReviewId) ForeignTable(Schema2.SchemaTest) ForeignColumns(ReviewId) OnUpdate(NO ACTION) OnDelete(NO ACTION)"));
     }
 
     [Fact]
@@ -204,7 +206,7 @@ DIFFERENT: DbContext 'SchemaDbContext', foreign key. Expected = FK_SchemaTest_Sc
         //VERIFY
         _output.WriteLine(comparer.GetAllErrors);
         hasErrors.ShouldBeTrue();
-        comparer.GetAllErrors.ShouldEqual(@"NOT IN DATABASE: DbContext 'CheckConstraintsContext', check constraint. Expected = Book CK_book_CheckConstraint (((""Title"" IS NOT NULL) = (""PublishedOn"" IS NOT NULL)))");
+        comparer.GetAllErrors.ShouldEqual(@"NOT IN DATABASE: DbContext 'CheckConstraintsContext', check constraint. Expected = Book CK_book_CheckConstraint (((""Title"" IS NOT NULL AND ""PublishedOn"" IS NOT NULL) OR (""Title"" IS NULL AND ""PublishedOn"" IS NULL)))");
     }
 
     [Fact]
