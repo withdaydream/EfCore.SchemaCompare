@@ -37,6 +37,19 @@ public class PostgresCheckExpressionParserTests
     }
 
     [Fact]
+    public void Parse_HandlesBinaryAddition()
+    {
+        //ATTEMPT
+        var result = PostgresCheckExpressionParser.TryParse(
+            "total_token_count = input_token_count + output_token_count");
+
+        //VERIFY
+        result.Success.ShouldBeTrue(result.Error);
+        var comparison = (PostgresBinaryExpression)result.Expression!;
+        ((PostgresBinaryExpression)comparison.Right).Operator.ShouldEqual("+");
+    }
+
+    [Fact]
     public void Parse_HandlesCaseExpression()
     {
         //ATTEMPT

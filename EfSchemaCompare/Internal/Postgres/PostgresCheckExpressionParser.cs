@@ -80,7 +80,7 @@ internal static class PostgresCheckExpressionParser
 
         private PostgresCheckExpression ParseComparison()
         {
-            var left = ParsePostfix();
+            var left = ParseAdditive();
 
             if (MatchKeyword("is"))
             {
@@ -111,7 +111,19 @@ internal static class PostgresCheckExpressionParser
             if (Current.Kind == PostgresCheckTokenKind.Operator && IsComparisonOperator(Current.Text))
             {
                 var op = NormalizeOperator(Advance().Text);
-                return new PostgresBinaryExpression(op, left, ParsePostfix());
+                return new PostgresBinaryExpression(op, left, ParseAdditive());
+            }
+
+            return left;
+        }
+
+        private PostgresCheckExpression ParseAdditive()
+        {
+            var left = ParsePostfix();
+            while (Current.Kind == PostgresCheckTokenKind.Operator && Current.Text is "+" or "-")
+            {
+                var op = Advance().Text;
+                left = new PostgresBinaryExpression(op, left, ParsePostfix());
             }
 
             return left;

@@ -32,6 +32,31 @@ public class PostgresCheckConstraintComparerTests
     }
 
     [Fact]
+    public void Compare_EquivalentArithmeticCheckConstraintsDoesNotLogDrift()
+    {
+        //SETUP
+        var logs = new List<CompareLog>();
+        var comparer = CreateComparer(logs);
+
+        var modelConstraints = new[]
+        {
+            Check("ai_usage_event", "CK_ai_usage_event_token_counts_components_match_totals",
+                "(input_token_count IS NULL OR (cached_input_token_count <= input_token_count AND cache_write_input_token_count <= input_token_count AND reasoning_output_token_count <= output_token_count AND total_token_count = input_token_count + output_token_count))")
+        };
+        var dbConstraints = new[]
+        {
+            Check("ai_usage_event", "CK_ai_usage_event_token_counts_components_match_totals",
+                "((input_token_count IS NULL) OR ((cached_input_token_count <= input_token_count) AND (cache_write_input_token_count <= input_token_count) AND (reasoning_output_token_count <= output_token_count) AND (total_token_count = (input_token_count + output_token_count))))")
+        };
+
+        //ATTEMPT
+        comparer.Compare(dbConstraints, modelConstraints, CompareAttributes.CheckConstraint);
+
+        //VERIFY
+        logs.Count.ShouldEqual(0);
+    }
+
+    [Fact]
     public void Compare_DifferentCheckClauseWithSameNameLogsDifferent()
     {
         //SETUP
