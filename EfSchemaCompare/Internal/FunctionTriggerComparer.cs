@@ -29,22 +29,33 @@ internal class FunctionTriggerComparer
     /// <summary>
     /// Anything a context declares that isn't in the database is logged under that context.
     /// Anything in the database that no context declares is logged under the first context.
+    /// A declared function whose name is built into the database or comes from an extension, e.g. jsonb_extract_path_text,
+    /// is never missing. These are matched by name only, as the database resolves calls to them via variadic arguments,
+    /// implicit casts and casts written as calls, e.g. timestamptz(text), so their signatures needn't match.
     /// </summary>
     internal void Compare(IReadOnlyList<ContextDeclarations> contexts,
         IReadOnlyList<IConstraintReader.FunctionDefinition> dbFunctions,
-        IReadOnlyList<IConstraintReader.TriggerDefinition> dbTriggers)
+        IReadOnlyList<IConstraintReader.TriggerDefinition> dbTriggers,
+        IReadOnlyList<IConstraintReader.ExternalFunctionName> externalFunctionNames)
     {
+        var externalNames = externalFunctionNames.Select(x => x.Name).ToHashSet(StringComparer.Ordinal);
+        var externalQualifiedNames = externalFunctionNames.Select(x => $"{x.SchemaName}.{x.Name}").ToHashSet(StringComparer.Ordinal);
+        //A function without a schema is called unqualified, so the database looks for it in the schemas on its search path
+        bool IsExternal(IConstraintReader.FunctionDefinition f) => f.SchemaName == null
+            ? externalNames.Contains(f.FunctionName)
+            : externalQualifiedNames.Contains($"{f.SchemaName}.{f.FunctionName}");
+
         CompareObjects(CompareType.Function,
-            contexts.Select(c => (c.DbContextLog, c.Functions.Select(f => (f.GetIdentity(_defaultSchema), f.Description)))).ToList(),
+            contexts.Select(c => (c.DbContextLog, c.Functions.Select(f => (f.GetIdentity(_defaultSchema), f.Description, IsExternal(f))))).ToList(),
             dbFunctions.Select(f => (f.GetIdentity(_defaultSchema), f.Description)).ToList());
 
         CompareObjects(CompareType.Trigger,
-            contexts.Select(c => (c.DbContextLog, c.Triggers.Select(t => (t.GetIdentity(_defaultSchema), t.Description)))).ToList(),
+            contexts.Select(c => (c.DbContextLog, c.Triggers.Select(t => (t.GetIdentity(_defaultSchema), t.Description, false)))).ToList(),
             dbTriggers.Select(t => (t.GetIdentity(_defaultSchema), t.Description)).ToList());
     }
 
     private void CompareObjects(CompareType type,
-        IReadOnlyList<(CompareLog DbContextLog, IEnumerable<(string Identity, string Description)> Declared)> contexts,
+        IReadOnlyList<(CompareLog DbContextLog, IEnumerable<(string Identity, string Description, bool IsExternal)> Declared)> contexts,
         IReadOnlyList<(string Identity, string Description)> inDatabase)
     {
         var dbIdentities = inDatabase.Select(x => x.Identity).ToHashSet(StringComparer.Ordinal);
@@ -58,7 +69,7 @@ internal class FunctionTriggerComparer
         foreach (var context in contexts)
         {
             var logger = CreateLogger(type, context.DbContextLog);
-            foreach (var declared in context.Declared.Where(x => !dbIdentities.Contains(x.Identity))
+            foreach (var declared in context.Declared.Where(x => !x.IsExternal && !dbIdentities.Contains(x.Identity))
                          .DistinctBy(x => x.Identity).OrderBy(x => x.Identity, StringComparer.Ordinal))
                 logger.NotInDatabase(declared.Description, CompareAttributes.NotSet, declared.Identity);
         }

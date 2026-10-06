@@ -44,7 +44,8 @@ public class FunctionTriggerComparerTests
         CreateComparer().Compare(
             new[] { Declarations(contextLog) },
             new[] { Function("touch_widget", "", "function returning trigger") },
-            new[] { Trigger("widget", "trg_widget_touch", "CREATE TRIGGER trg_widget_touch ...") });
+            new[] { Trigger("widget", "trg_widget_touch", "CREATE TRIGGER trg_widget_touch ...") },
+            NoExternalNames);
 
         //VERIFY
         contextLog.SubLogs.Select(x => x.ToString()).ToArray().ShouldEqual(new[]
@@ -66,7 +67,8 @@ public class FunctionTriggerComparerTests
                 new[] { Function("slugify", "text", "function returning text", schema: null) },
                 new[] { Trigger("widget", "trg_widget_touch", "trigger declared on entity Widget", schema: null) }) },
             Array.Empty<IConstraintReader.FunctionDefinition>(),
-            Array.Empty<IConstraintReader.TriggerDefinition>());
+            Array.Empty<IConstraintReader.TriggerDefinition>(),
+            NoExternalNames);
 
         //VERIFY
         contextLog.SubLogs.Select(x => x.ToString()).ToArray().ShouldEqual(new[]
@@ -89,7 +91,8 @@ public class FunctionTriggerComparerTests
                 new[] { Function("slugify", "text", "function returning text", schema: null) },
                 new[] { Trigger("widget", "trg_widget_touch", "trigger declared on entity Widget", schema: null) }) },
             new[] { Function("slugify", "text", "function returning text") },
-            new[] { Trigger("widget", "trg_widget_touch", "CREATE TRIGGER ...") });
+            new[] { Trigger("widget", "trg_widget_touch", "CREATE TRIGGER ...") },
+            NoExternalNames);
 
         //VERIFY
         contextLog.SubLogs.Count.ShouldEqual(0);
@@ -110,7 +113,8 @@ public class FunctionTriggerComparerTests
                 Function("slugify", "text", "function returning text"),
                 Function("slugify", "text,integer", "function returning text")
             },
-            Array.Empty<IConstraintReader.TriggerDefinition>());
+            Array.Empty<IConstraintReader.TriggerDefinition>(),
+            NoExternalNames);
 
         //VERIFY
         contextLog.SubLogs.Select(x => x.ToString()).ToArray().ShouldEqual(new[]
@@ -133,7 +137,8 @@ public class FunctionTriggerComparerTests
             {
                 Trigger("widget", "set_updated_at", "CREATE TRIGGER ..."),
                 Trigger("gadget", "set_updated_at", "CREATE TRIGGER ...")
-            });
+            },
+            NoExternalNames);
 
         //VERIFY
         contextLog.SubLogs.Select(x => x.ToString()).ToArray().ShouldEqual(new[]
@@ -157,7 +162,8 @@ public class FunctionTriggerComparerTests
                 Declarations(secondContextLog, new[] { Function("slugify", "text", "function returning text"), Function("missing", "", "function returning text") })
             },
             new[] { Function("slugify", "text", "function returning text"), Function("rogue", "", "function returning void") },
-            Array.Empty<IConstraintReader.TriggerDefinition>());
+            Array.Empty<IConstraintReader.TriggerDefinition>(),
+            NoExternalNames);
 
         //VERIFY
         firstContextLog.SubLogs.Select(x => x.ToString()).ToArray().ShouldEqual(new[]
@@ -185,13 +191,68 @@ public class FunctionTriggerComparerTests
         new FunctionTriggerComparer(config.LogsToIgnore, "public", () => { }).Compare(
             new[] { Declarations(contextLog) },
             new[] { Function("touch_widget", "", "function returning trigger"), Function("rogue", "", "function returning void") },
-            new[] { Trigger("widget", "trg_json", jsonTriggerDef), Trigger("widget", "trg_other", "CREATE TRIGGER trg_other ...") });
+            new[] { Trigger("widget", "trg_json", jsonTriggerDef), Trigger("widget", "trg_other", "CREATE TRIGGER trg_other ...") },
+            NoExternalNames);
 
         //VERIFY
         contextLog.SubLogs.Select(x => x.ToString()).ToArray().ShouldEqual(new[]
         {
             "EXTRA IN DATABASE: Function 'public.rogue()'. Found = function returning void",
             "EXTRA IN DATABASE: Trigger 'public.widget.trg_other'. Found = CREATE TRIGGER trg_other ..."
+        });
+    }
+
+    [Fact]
+    public void Compare_DeclaredBuiltInOrExtensionFunctionIsMatchedByName()
+    {
+        //SETUP
+        var contextLog = CreateContextLog();
+
+        //ATTEMPT
+        CreateComparer().Compare(
+            new[] { Declarations(contextLog, new[]
+            {
+                //Built in as jsonb_extract_path_text(jsonb, VARIADIC text[]), so the signature doesn't match
+                Function("jsonb_extract_path_text", "jsonb,text", "function returning text", schema: null),
+                //Postgres treats this as a cast to the timestamptz type
+                Function("timestamptz", "text", "function returning timestamp with time zone", schema: null),
+                //An explicit schema must be the schema the function is in
+                Function("lower", "text", "function returning text", schema: "app"),
+                Function("slugify", "text", "function returning text", schema: null)
+            }) },
+            Array.Empty<IConstraintReader.FunctionDefinition>(),
+            Array.Empty<IConstraintReader.TriggerDefinition>(),
+            new[] { External("pg_catalog", "jsonb_extract_path_text"), External("pg_catalog", "timestamptz"), External("pg_catalog", "lower") });
+
+        //VERIFY
+        contextLog.SubLogs.Select(x => x.ToString()).ToArray().ShouldEqual(new[]
+        {
+            "NOT IN DATABASE: Function 'app.lower(text)'. Expected = function returning text",
+            "NOT IN DATABASE: Function 'public.slugify(text)'. Expected = function returning text"
+        });
+    }
+
+    [Fact]
+    public void Compare_UserFunctionWithBuiltInNameIsStillExtraUnlessDeclared()
+    {
+        //SETUP
+        var contextLog = CreateContextLog();
+
+        //ATTEMPT
+        CreateComparer().Compare(
+            new[] { Declarations(contextLog, new[] { Function("jsonb_extract_path_text", "jsonb,text", "function returning text", schema: null) }) },
+            new[]
+            {
+                Function("jsonb_extract_path_text", "jsonb,text", "function returning text"),
+                Function("jsonb_extract_path_text", "jsonb,text,text", "function returning text")
+            },
+            Array.Empty<IConstraintReader.TriggerDefinition>(),
+            new[] { External("pg_catalog", "jsonb_extract_path_text") });
+
+        //VERIFY
+        contextLog.SubLogs.Select(x => x.ToString()).ToArray().ShouldEqual(new[]
+        {
+            "EXTRA IN DATABASE: Function 'public.jsonb_extract_path_text(jsonb,text,text)'. Found = function returning text"
         });
     }
 
@@ -216,6 +277,14 @@ public class FunctionTriggerComparerTests
     }
 
     //------------------------------------------------------
+
+    private static readonly IReadOnlyList<IConstraintReader.ExternalFunctionName> NoExternalNames =
+        Array.Empty<IConstraintReader.ExternalFunctionName>();
+
+    private static IConstraintReader.ExternalFunctionName External(string schema, string name)
+    {
+        return new IConstraintReader.ExternalFunctionName { SchemaName = schema, Name = name };
+    }
 
     private static FunctionTriggerComparer CreateComparer(Action setErrorHasHappened = null)
     {

@@ -126,6 +126,42 @@ public class PostgresConstraintReader : IConstraintReader
     }
 
     /// <summary>
+    /// Returns the names of the functions that <see cref="GetFunctions"/> leaves out, i.e. ones built into Postgres or
+    /// owned by an extension, plus the names of built-in and extension types, because Postgres treats a call like
+    /// uuid('...') or timestamptz(text) as a cast to that type when no function matches.
+    /// </summary>
+    public IReadOnlyList<IConstraintReader.ExternalFunctionName> GetExternalFunctionNames(DbContext dbContext)
+    {
+        return dbContext.Database.SqlQueryRaw<IConstraintReader.ExternalFunctionName>(
+            """
+            SELECT n.nspname AS schema_name, p.proname AS name
+            FROM
+                pg_proc AS p
+            JOIN
+                pg_namespace AS n ON n.oid = p.pronamespace
+            WHERE
+                p.oid < 16384
+                OR EXISTS (
+                    SELECT 1 FROM pg_depend AS d
+                    WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
+                )
+            UNION
+            SELECT n.nspname AS schema_name, t.typname AS name
+            FROM
+                pg_type AS t
+            JOIN
+                pg_namespace AS n ON n.oid = t.typnamespace
+            WHERE
+                t.oid < 16384
+                OR EXISTS (
+                    SELECT 1 FROM pg_depend AS d
+                    WHERE d.classid = 'pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e'
+                )
+            """
+        ).ToList();
+    }
+
+    /// <summary>
     /// Returns every trigger on every table in the database, other than ones Postgres creates itself
     /// (e.g. for foreign keys), copies of a partitioned table's trigger on its partitions, and triggers
     /// on tables owned by an extension. Requires Postgres 13 or later (pg_trigger.tgparentid).

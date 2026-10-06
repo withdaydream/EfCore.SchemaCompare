@@ -1,5 +1,9 @@
 # Release notes
 
+## 10.3.0-daydream
+
+- A declared function that is built into PostgreSQL or comes from an extension, e.g. `jsonb_extract_path_text`, is no longer reported as `NOT IN DATABASE`.
+
 ## 10.2.0-daydream
 
 - New feature (PostgreSQL): compares functions and triggers declared via `HasDbFunction`/`HasTrigger` with the database, reporting any that are missing and any undeclared ones in the database - see README.

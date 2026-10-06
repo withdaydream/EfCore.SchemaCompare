@@ -12,6 +12,11 @@ public interface IConstraintReader
 
     IReadOnlyList<FunctionDefinition> GetFunctions(DbContext dbContext);
 
+    /// <summary>
+    /// The names a declared function can resolve to that GetFunctions leaves out, i.e. built into the database or from an extension
+    /// </summary>
+    IReadOnlyList<ExternalFunctionName> GetExternalFunctionNames(DbContext dbContext);
+
     IReadOnlyList<TriggerDefinition> GetTriggers(DbContext dbContext);
 
     public interface IConstraint
@@ -96,6 +101,15 @@ public interface IConstraintReader
         {
             return $"{SchemaName ?? defaultSchema}.{FunctionName}({ArgumentTypes})";
         }
+    }
+
+    public record ExternalFunctionName
+    {
+        [Column("schema_name")]
+        public required string SchemaName { get; init; }
+
+        [Column("name")]
+        public required string Name { get; init; }
     }
 
     public record TriggerDefinition

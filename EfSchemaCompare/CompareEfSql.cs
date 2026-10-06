@@ -99,9 +99,10 @@ namespace EfSchemaCompare
             //Functions and triggers aren't tied to one DbContext, so they are compared against all the DbContexts together.
             //The readers are unioned because the non-Postgres reader returns each DbContext's own declarations
             var dbFunctions = dbContexts.SelectMany(c => Stage1Comparer.CreateConstraintReader(c).GetFunctions(c)).Distinct().ToList();
+            var externalFunctionNames = dbContexts.SelectMany(c => Stage1Comparer.CreateConstraintReader(c).GetExternalFunctionNames(c)).Distinct().ToList();
             var dbTriggers = dbContexts.SelectMany(c => Stage1Comparer.CreateConstraintReader(c).GetTriggers(c)).Distinct().ToList();
             new FunctionTriggerComparer(_config.LogsToIgnore, databaseModel.DefaultSchema ?? "public", () => hasErrors = true)
-                .Compare(declarations, dbFunctions, dbTriggers);
+                .Compare(declarations, dbFunctions, dbTriggers, externalFunctionNames);
 
             //Normally stage 2 isn't run if there were errors that haven't ignored,
             //but if AlwaysRunStage2 is true, then stage 2 will run even there are non-ignored errors

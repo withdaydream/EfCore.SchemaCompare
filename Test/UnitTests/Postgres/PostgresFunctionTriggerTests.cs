@@ -137,6 +137,24 @@ public class PostgresFunctionTriggerTests
         hasErrors.ShouldBeFalse();
     }
 
+    [Fact]
+    public void CompareEfPostgreSqlAcceptsDeclaredBuiltInAndExtensionFunctions()
+    {
+        //SETUP
+        var connectionString = this.GetUniquePostgreSqlConnectionString();
+        using var context = CreateContext<BuiltInFunctionsContext>(connectionString, o => new BuiltInFunctionsContext(o));
+        context.Database.ExecuteSqlRaw("CREATE EXTENSION IF NOT EXISTS pgcrypto;");
+
+        var comparer = new CompareEfSql();
+
+        //ATTEMPT
+        var hasErrors = comparer.CompareEfWithDb(connectionString, context);
+
+        //VERIFY
+        _output.WriteLine(comparer.GetAllErrors);
+        hasErrors.ShouldBeFalse();
+    }
+
     //------------------------------------------------------
 
     private static TContext CreateContext<TContext>(string connectionString, Func<DbContextOptions<TContext>, TContext> create)
@@ -184,6 +202,38 @@ public class PostgresFunctionTriggerTests
                 entity.Property(e => e.Name).HasColumnName("name");
             });
             modelBuilder.HasDbFunction(typeof(DeclarationsContext).GetMethod(nameof(Slugify))!).HasName("slugify");
+        }
+    }
+
+    private class BuiltInFunctionsContext : DbContext
+    {
+        public BuiltInFunctionsContext(DbContextOptions<BuiltInFunctionsContext> options) : base(options) { }
+
+        public DbSet<Widget> Widgets { get; set; }
+
+        public static string JsonText(object json, string key) => throw new NotSupportedException();
+        public static DateTime ToTimestampTz(string value) => throw new NotSupportedException();
+        public static Guid ToUuid(string value) => throw new NotSupportedException();
+        public static byte[] GenRandomBytes(int count) => throw new NotSupportedException();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Widget>(entity =>
+            {
+                entity.ToTable("widget");
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Name).HasColumnName("name");
+            });
+
+            //Built in as jsonb_extract_path_text(jsonb, VARIADIC text[])
+            modelBuilder.HasDbFunction(typeof(BuiltInFunctionsContext).GetMethod(nameof(JsonText))!)
+                .HasName("jsonb_extract_path_text")
+                .HasParameter("json", p => p.HasStoreType("jsonb"));
+            //Postgres treats timestamptz(text) and uuid(text) as casts, as neither function exists
+            modelBuilder.HasDbFunction(typeof(BuiltInFunctionsContext).GetMethod(nameof(ToTimestampTz))!).HasName("timestamptz");
+            modelBuilder.HasDbFunction(typeof(BuiltInFunctionsContext).GetMethod(nameof(ToUuid))!).HasName("uuid");
+            //From the pgcrypto extension
+            modelBuilder.HasDbFunction(typeof(BuiltInFunctionsContext).GetMethod(nameof(GenRandomBytes))!).HasName("gen_random_bytes");
         }
     }
 
