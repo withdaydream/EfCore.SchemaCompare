@@ -174,16 +174,18 @@ public class FunctionTriggerComparerTests
     public void Compare_IgnoreTheseErrorsOnlyIgnoresTheNamedObject()
     {
         //SETUP
+        //A definition with ", " and "->" in it, which the ignore decoding must cope with
+        const string jsonTriggerDef = "CREATE TRIGGER trg_json AFTER INSERT OR UPDATE OF a, b ON public.widget FOR EACH ROW WHEN ((new.data ->> 'x'::text) IS NOT NULL) EXECUTE FUNCTION touch_widget()";
         var config = new CompareEfSqlConfig();
         config.IgnoreTheseErrors("EXTRA IN DATABASE: Function 'public.touch_widget()'. Found = function returning trigger");
-        config.IgnoreTheseErrors("EXTRA IN DATABASE: Trigger 'public.widget.trg_json'. Found = CREATE TRIGGER trg_json AFTER INSERT OR UPDATE OF a, b ON public.widget FOR EACH ROW WHEN ((new.data ->> 'x'::text) IS NOT NULL) EXECUTE FUNCTION touch_widget()");
+        config.IgnoreTheseErrors($"EXTRA IN DATABASE: Trigger 'public.widget.trg_json'. Found = {jsonTriggerDef}");
         var contextLog = CreateContextLog();
 
         //ATTEMPT
         new FunctionTriggerComparer(config.LogsToIgnore, "public", () => { }).Compare(
             new[] { Declarations(contextLog) },
             new[] { Function("touch_widget", "", "function returning trigger"), Function("rogue", "", "function returning void") },
-            new[] { Trigger("widget", "trg_json", "CREATE TRIGGER trg_json ..."), Trigger("widget", "trg_other", "CREATE TRIGGER trg_other ...") });
+            new[] { Trigger("widget", "trg_json", jsonTriggerDef), Trigger("widget", "trg_other", "CREATE TRIGGER trg_other ...") });
 
         //VERIFY
         contextLog.SubLogs.Select(x => x.ToString()).ToArray().ShouldEqual(new[]

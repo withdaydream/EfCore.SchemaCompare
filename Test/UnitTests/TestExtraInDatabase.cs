@@ -162,7 +162,7 @@ public class TestExtraInDatabase
             TablesToIgnoreCommaDelimited = "",
         };
         config.IgnoreTheseErrors(
-            "EXTRA IN DATABASE: Column 'Books', column name. Found = ExtraColumn");
+            "EXTRA IN DATABASE: Column 'Books', column name. Found = ExtraTable");
         var comparer = new CompareEfSql(config);
         var hasErrors = comparer.CompareEfWithDb(context);
 

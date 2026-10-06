@@ -1,5 +1,11 @@
 # Release notes
 
+## Unreleased
+
+- Fixed: `IgnoreTheseErrors` dropped the `Found = ...` part of `EXTRA IN DATABASE` errors, so one ignore line matched every extra item of that kind with the same name, e.g. ignoring one extra column in a table ignored all extra columns in that table, and ignoring one extra check constraint ignored all of them. It now only ignores the exact item.
+- NOTE: If you relied on that broad match you may see `EXTRA IN DATABASE` errors that were hidden before. Add an ignore line for each one, or use `AddIgnoreCompareLog` with `found` left as null to match them all.
+- Fixed: an `Expected = ...` value containing ", ", e.g. a multi-column foreign key, was cut short, so its ignore line never matched.
+
 ## 10.0.0
 
 - .NET 10 version

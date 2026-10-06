@@ -25,11 +25,12 @@ internal class FindErrorsToIgnore
         //string items. Some errors don't have Expected or Found, in which case it has null 
         var name = GetStringInError(errorString, "'", "'");
         //"Expected" can either have a "Found" after it, or not,
-        //so we get everything to the end and take off the "Found" part if it's there
+        //so we get everything to the end and take off the "Found" part if it's there.
+        //It looks for the whole ", found = " as the expected text can contain ", ", e.g. "Columns(A, B)"
         var expected = GetStringInError(errorString, "Expected = ", null);
         if (expected != null)
         {
-            var possibleFoundStart = expected.IndexOf(", ", StringComparison.Ordinal);
+            var possibleFoundStart = expected.IndexOf(", found = ", StringComparison.Ordinal);
             if (possibleFoundStart> 0)
                 expected = expected.Substring(0, possibleFoundStart);
         }
@@ -57,38 +58,32 @@ internal class FindErrorsToIgnore
     /// <param name="errorString">A string containing an error created during  </param>
     /// <param name="beforeString">NOTE: If the beforeString is null/empty it will start at the first letter</param>
     /// <param name="afterString">NOTE: If the beforeString is null/empty it will end it will go to the end </param>
-    /// <param name="ignoreCase">The 'found = ' can be 'found = ' or 'found = ', set this </param>
+    /// <param name="ignoreCase">Set this to find 'found = ', which is 'Found = ' in an ExtraInDatabase error
+    /// and 'found = ' when it follows an 'Expected = '</param>
     /// <returns>Returns the string between the two start/end strings.
     /// NOTE: If either the beforeString or afterString aren't found it will return null, i.e. not found</returns>
     private static string GetStringInError(string errorString, string beforeString, string afterString, bool ignoreCase = false)
     {
+        var comparison = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
         var typeStart = 0;
         if (!String.IsNullOrEmpty(beforeString))
         {
-            typeStart = errorString.IndexOf(beforeString,
-                            ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
-                        + beforeString.Length;
-            if (errorString.IndexOf(beforeString, StringComparison.Ordinal) == -1)
+            var beforeIndex = errorString.IndexOf(beforeString, comparison);
+            if (beforeIndex == -1)
                 return null; //Could not find the beforeString
+            typeStart = beforeIndex + beforeString.Length;
         }
 
         var typeEnd = errorString.Length;
         if (!String.IsNullOrEmpty(afterString))
         {
-            typeEnd = errorString.Substring(typeStart).IndexOf(afterString) + typeStart;
-            if (errorString.IndexOf(afterString, StringComparison.Ordinal) == -1)
-                return null; //Could not find the beforeString
+            typeEnd = errorString.IndexOf(afterString, typeStart, comparison);
+            if (typeEnd == -1)
+                return null; //Could not find the afterString
         }
 
-        string result = null;
-        if (String.IsNullOrEmpty(afterString))
-        {
-            result = errorString.Substring(typeStart);
-        }
-        else
-        {
-            result = errorString.Substring(typeStart, typeEnd - typeStart);
-        }
+        var result = errorString.Substring(typeStart, typeEnd - typeStart);
         return result.Length == 0 || result == "<null>" ? null : result;
     }
 

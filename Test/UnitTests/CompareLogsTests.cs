@@ -46,6 +46,56 @@ namespace Test.UnitTests
             result3.ShouldEqual(logStr3.Replace("BookDetail->", ""));
         }
 
+        [Fact]
+        public void DecodeCompareTextToCompareLog_ExtraInDatabaseKeepsFound()
+        {
+            //SETUP
+            const string logStr = "EXTRA IN DATABASE: Column 'Books', column name. Found = ExtraTable";
+
+            //ATTEMPT
+            var log = FindErrorsToIgnore.DecodeCompareTextToCompareLog(logStr);
+
+            //VERIFY
+            log.Found.ShouldEqual("ExtraTable");
+            log.ToString().ShouldEqual(logStr);
+        }
+
+        [Theory]
+        [InlineData("DIFFERENT: DbContext 'MyContext', foreign key. Expected = FK_Book Columns(A, B), found = FK_Book Columns(A, C)",
+            "FK_Book Columns(A, B)", "FK_Book Columns(A, C)")]
+        [InlineData("NOT IN DATABASE: DbContext 'MyContext', foreign key. Expected = FK_Book Columns(A, B)",
+            "FK_Book Columns(A, B)", null)]
+        public void DecodeCompareTextToCompareLog_ExpectedContainingCommaIsNotCutShort(string logStr, string expected, string found)
+        {
+            //ATTEMPT
+            var log = FindErrorsToIgnore.DecodeCompareTextToCompareLog(logStr);
+
+            //VERIFY
+            log.Expected.ShouldEqual(expected);
+            log.Found.ShouldEqual(found);
+            log.ToString().ShouldEqual(logStr);
+        }
+
+        [Fact]
+        public void IgnoreTheseErrors_ExtraInDatabaseOnlyIgnoresTheItemNamed()
+        {
+            //SETUP
+            var config = new CompareEfSqlConfig();
+            config.IgnoreTheseErrors(@"EXTRA IN DATABASE: DbContext 'MyContext', check constraint. Found = Book ck_a ((""A"" > 0))");
+            var ignoredLog = new CompareLog(CompareType.DbContext, CompareState.ExtraInDatabase, "MyContext",
+                CompareAttributes.CheckConstraint, null, @"Book ck_a ((""A"" > 0))");
+            var otherLog = new CompareLog(CompareType.DbContext, CompareState.ExtraInDatabase, "MyContext",
+                CompareAttributes.CheckConstraint, null, @"Book ck_b ((""B"" > 0))");
+
+            //ATTEMPT
+            var ignoreFirst = ignoredLog.ShouldIgnoreThisLog(config.LogsToIgnore);
+            var ignoreOther = otherLog.ShouldIgnoreThisLog(config.LogsToIgnore);
+
+            //VERIFY
+            ignoreFirst.ShouldBeTrue();
+            ignoreOther.ShouldBeFalse();
+        }
+
         [Theory]
         [ClassData(typeof(CompareIgnoreLogs))]
         public void CheckIgnore(CompareLog ignoreItem, bool shouldIgnore)
