@@ -8,6 +8,8 @@ using System.Linq;
 using System.Reflection;
 using EfSchemaCompare.Internal;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Scaffolding;
 using Microsoft.EntityFrameworkCore.Scaffolding.Metadata;
 using Microsoft.Extensions.Configuration;
@@ -83,11 +85,23 @@ namespace EfSchemaCompare
         {
             var databaseModel = GetDatabaseModelViaScaffolder(dbContexts, connectionString);
             bool hasErrors = false;
+            var declarations = new List<FunctionTriggerComparer.ContextDeclarations>();
             foreach (var context in dbContexts)
             {
                 var stage1Comparer = new Stage1Comparer(context, _config, _logs);
                 hasErrors |= stage1Comparer.CompareModelToDatabase(databaseModel);
+
+                var designTimeModel = context.GetService<IDesignTimeModel>().Model;
+                declarations.Add(new FunctionTriggerComparer.ContextDeclarations(
+                    stage1Comparer.DbContextLog, designTimeModel.GetFunctions(), designTimeModel.GetTriggers()));
             }
+
+            //Functions and triggers aren't tied to one DbContext, so they are compared against all the DbContexts together.
+            //The readers are unioned because the non-Postgres reader returns each DbContext's own declarations
+            var dbFunctions = dbContexts.SelectMany(c => Stage1Comparer.CreateConstraintReader(c).GetFunctions(c)).Distinct().ToList();
+            var dbTriggers = dbContexts.SelectMany(c => Stage1Comparer.CreateConstraintReader(c).GetTriggers(c)).Distinct().ToList();
+            new FunctionTriggerComparer(_config.LogsToIgnore, databaseModel.DefaultSchema ?? "public", () => hasErrors = true)
+                .Compare(declarations, dbFunctions, dbTriggers);
 
             //Normally stage 2 isn't run if there were errors that haven't ignored,
             //but if AlwaysRunStage2 is true, then stage 2 will run even there are non-ignored errors

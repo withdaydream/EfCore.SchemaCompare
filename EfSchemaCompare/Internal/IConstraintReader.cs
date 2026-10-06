@@ -10,6 +10,10 @@ public interface IConstraintReader
 
     IReadOnlyList<ForeignKeyConstraint> GetForeignKeyConstraints(DbContext dbContext);
 
+    IReadOnlyList<FunctionDefinition> GetFunctions(DbContext dbContext);
+
+    IReadOnlyList<TriggerDefinition> GetTriggers(DbContext dbContext);
+
     public interface IConstraint
     {
         [Column("constraint_name")]
@@ -61,6 +65,62 @@ public interface IConstraintReader
         public string GetCompareText()
         {
             return $"{ConstraintName} Table({TableName}) Columns({ColumnName}) ForeignTable({ForeignTableName}) ForeignColumns({ForeignColumnName}) OnUpdate({OnUpdate}) OnDelete({OnDelete})";
+        }
+    }
+
+    public record FunctionDefinition
+    {
+        /// <summary>
+        /// Null means the default schema
+        /// </summary>
+        [Column("schema_name")]
+        public string SchemaName { get; init; }
+
+        [Column("function_name")]
+        public required string FunctionName { get; init; }
+
+        /// <summary>
+        /// Input argument types, comma separated with no spaces, using the names Postgres's format_type() returns.
+        /// Postgres allows overloads, so the argument types are part of the identity.
+        /// </summary>
+        [Column("argument_types")]
+        public required string ArgumentTypes { get; init; }
+
+        /// <summary>
+        /// Human-readable text shown in the log. Not part of the comparison
+        /// </summary>
+        [Column("description")]
+        public required string Description { get; init; }
+
+        public string GetIdentity(string defaultSchema)
+        {
+            return $"{SchemaName ?? defaultSchema}.{FunctionName}({ArgumentTypes})";
+        }
+    }
+
+    public record TriggerDefinition
+    {
+        /// <summary>
+        /// Null means the default schema
+        /// </summary>
+        [Column("schema_name")]
+        public string SchemaName { get; init; }
+
+        [Column("table_name")]
+        public required string TableName { get; init; }
+
+        [Column("trigger_name")]
+        public required string TriggerName { get; init; }
+
+        /// <summary>
+        /// Human-readable text shown in the log. Not part of the comparison
+        /// </summary>
+        [Column("description")]
+        public required string Description { get; init; }
+
+        public string GetIdentity(string defaultSchema)
+        {
+            return $"{SchemaName ?? defaultSchema}.{TableName}.{TriggerName}";
         }
     }
 }

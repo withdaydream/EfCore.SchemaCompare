@@ -86,4 +86,77 @@ public class PostgresConstraintReader : IConstraintReader
             )
         ).ToList();
     }
+
+    /// <summary>
+    /// Returns every function, procedure and aggregate in the database, other than ones built into Postgres
+    /// (created by initdb, so their oid is below FirstNormalObjectId = 16384) or owned by an extension.
+    /// Each overload is returned separately.
+    /// </summary>
+    public IReadOnlyList<IConstraintReader.FunctionDefinition> GetFunctions(DbContext dbContext)
+    {
+        return dbContext.Database.SqlQueryRaw<IConstraintReader.FunctionDefinition>(
+            """
+            SELECT
+                n.nspname AS schema_name,
+                p.proname AS function_name,
+                COALESCE((
+                    SELECT string_agg(format_type(a.type_oid, NULL), ',' ORDER BY a.ord)
+                    FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY AS a(type_oid, ord)
+                ), '') AS argument_types,
+                CASE p.prokind
+                    WHEN 'p' THEN 'procedure'
+                    WHEN 'a' THEN 'aggregate returning ' || pg_get_function_result(p.oid)
+                    WHEN 'w' THEN 'window function returning ' || pg_get_function_result(p.oid)
+                    ELSE 'function returning ' || pg_get_function_result(p.oid)
+                END AS description
+            FROM
+                pg_proc AS p
+            JOIN
+                pg_namespace AS n ON n.oid = p.pronamespace
+            WHERE
+                p.oid >= 16384
+                AND n.nspname !~ '^pg_(toast_)?temp_'
+                AND NOT EXISTS (
+                    SELECT 1 FROM pg_depend AS d
+                    WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
+                )
+            ORDER BY schema_name, function_name, argument_types
+            """
+        ).ToList();
+    }
+
+    /// <summary>
+    /// Returns every trigger on every table in the database, other than ones Postgres creates itself
+    /// (e.g. for foreign keys), copies of a partitioned table's trigger on its partitions, and triggers
+    /// on tables owned by an extension. Requires Postgres 13 or later (pg_trigger.tgparentid).
+    /// </summary>
+    public IReadOnlyList<IConstraintReader.TriggerDefinition> GetTriggers(DbContext dbContext)
+    {
+        return dbContext.Database.SqlQueryRaw<IConstraintReader.TriggerDefinition>(
+            """
+            SELECT
+                n.nspname AS schema_name,
+                c.relname AS table_name,
+                t.tgname AS trigger_name,
+                pg_get_triggerdef(t.oid) AS description
+            FROM
+                pg_trigger AS t
+            JOIN
+                pg_class AS c ON c.oid = t.tgrelid
+            JOIN
+                pg_namespace AS n ON n.oid = c.relnamespace
+            WHERE
+                NOT t.tgisinternal
+                AND t.tgparentid = 0
+                AND n.nspname !~ '^pg_(toast_)?temp_'
+                AND NOT EXISTS (
+                    SELECT 1 FROM pg_depend AS d
+                    WHERE d.deptype = 'e'
+                      AND ((d.classid = 'pg_class'::regclass AND d.objid = c.oid)
+                        OR (d.classid = 'pg_trigger'::regclass AND d.objid = t.oid))
+                )
+            ORDER BY schema_name, table_name, trigger_name
+            """
+        ).ToList();
+    }
 }

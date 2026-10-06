@@ -23,7 +23,9 @@ namespace EfSchemaCompare
         //Database side (used for ExtraInDatabase)
         Database, Table, Column,
         //Used for both
-        PrimaryKey, ForeignKey, Index}
+        PrimaryKey, ForeignKey, Index,
+        //Database objects that EF Core can only declare, e.g. HasDbFunction, HasTrigger
+        Function, Trigger}
     /// <summary>
     /// This defines the result of a comparision
     /// </summary>

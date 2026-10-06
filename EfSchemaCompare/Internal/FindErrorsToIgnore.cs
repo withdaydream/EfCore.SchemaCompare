@@ -20,7 +20,7 @@ internal class FindErrorsToIgnore
 
         //These parts of the errors are the same in all the error pattern
         var state = GetEnumType<CompareState>(errorString, null, ": ");
-        var attribute = GetEnumType<CompareAttributes>(errorString, ", ", ". ");
+        var attribute = GetAttribute(errorString);
 
         //string items. Some errors don't have Expected or Found, in which case it has null 
         var name = GetStringInError(errorString, "'", "'");
@@ -38,7 +38,9 @@ internal class FindErrorsToIgnore
         //The type part has two patterns
         //1. "OK: DbContext ...", where "DbContext" is the type
         //2. "NOT IN DATABASE: BookDetail->ForeignKey ...", where "ForeignKey" is the type
-        var beforeString = errorString.Contains("->") ? "->" : ": ";
+        //The "->" is only looked for before the name, as the expected/found text can contain "->", e.g. a trigger's json operator
+        var nameStart = errorString.IndexOf('\'');
+        var beforeString = (nameStart < 0 ? errorString : errorString.Substring(0, nameStart)).Contains("->") ? "->" : ": ";
         var type = GetEnumType<CompareType>(errorString, beforeString, " ");
 
         //These are either different in the various errors strings, or aren't in some error pattens
@@ -88,6 +90,27 @@ internal class FindErrorsToIgnore
             result = errorString.Substring(typeStart, typeEnd - typeStart);
         }
         return result.Length == 0 || result == "<null>" ? null : result;
+    }
+
+    /// <summary>
+    /// The attribute, if there is one, directly follows the quoted name, e.g. "DIFFERENT: Column 'Id', column type. Expected = ..."
+    /// It is found from the name's closing quote, as the expected/found text can contain ", " and ". ", e.g. a trigger definition
+    /// </summary>
+    /// <param name="errorString">The error message</param>
+    /// <returns>The attribute, or NotSet if there isn't one</returns>
+    private static CompareAttributes GetAttribute(string errorString)
+    {
+        var nameStart = errorString.IndexOf('\'');
+        var nameEnd = nameStart < 0 ? -1 : errorString.IndexOf('\'', nameStart + 1);
+        if (nameEnd < 0 || string.CompareOrdinal(errorString, nameEnd + 1, ", ", 0, 2) != 0)
+            return CompareAttributes.NotSet;
+
+        var attributeStart = nameEnd + 3;
+        var attributeEnd = errorString.IndexOf(". ", attributeStart, StringComparison.Ordinal);
+        var attributeText = attributeEnd < 0
+            ? errorString.Substring(attributeStart)
+            : errorString.Substring(attributeStart, attributeEnd - attributeStart);
+        return (CompareAttributes)Enum.Parse(typeof(CompareAttributes), attributeText.Replace(" ", ""), true);
     }
 
     /// <summary>

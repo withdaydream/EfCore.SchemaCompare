@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using EfSchemaCompare.Internal.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -40,6 +41,37 @@ public static class DatabaseContextConstraintHelpers
                 OnDelete = GetActionName(cc.OnDeleteAction)
             }))
             .OrderBy(c => c.ConstraintName)
+            .ToList();
+    }
+
+    public static IReadOnlyList<IConstraintReader.FunctionDefinition> GetFunctions(this IModel model)
+    {
+        return model
+            .GetRelationalModel()
+            .Functions
+            .Where(f => !f.IsBuiltIn)
+            .Select(f => new IConstraintReader.FunctionDefinition
+            {
+                SchemaName = f.Schema,
+                FunctionName = f.Name,
+                ArgumentTypes = String.Join(",", f.Parameters.Select(p => PostgresTypeNameNormalizer.Normalize(p.StoreType))),
+                Description = f.ReturnType == null ? "table-valued function" : $"function returning {f.ReturnType}"
+            })
+            .ToList();
+    }
+
+    public static IReadOnlyList<IConstraintReader.TriggerDefinition> GetTriggers(this IModel model)
+    {
+        return model
+            .GetRelationalModel()
+            .Tables
+            .SelectMany(t => t.Triggers.Select(tr => new IConstraintReader.TriggerDefinition
+            {
+                SchemaName = t.Schema,
+                TableName = t.Name,
+                TriggerName = tr.GetDatabaseName(),
+                Description = $"trigger declared on entity {tr.EntityType.DisplayName()}"
+            }))
             .ToList();
     }
 

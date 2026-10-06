@@ -16,4 +16,14 @@ internal class ModelConstraintReader : IConstraintReader
     {
         return dbContext.GetService<IDesignTimeModel>().Model.GetForeignKeyConstraints();
     }
+
+    public IReadOnlyList<IConstraintReader.FunctionDefinition> GetFunctions(DbContext dbContext)
+    {
+        return dbContext.GetService<IDesignTimeModel>().Model.GetFunctions();
+    }
+
+    public IReadOnlyList<IConstraintReader.TriggerDefinition> GetTriggers(DbContext dbContext)
+    {
+        return dbContext.GetService<IDesignTimeModel>().Model.GetTriggers();
+    }
 }

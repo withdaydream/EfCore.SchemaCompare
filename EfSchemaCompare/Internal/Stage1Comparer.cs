@@ -41,6 +41,11 @@ namespace EfSchemaCompare.Internal
         private readonly IDatabaseColumnFormatter _databaseColumnFormatter;
         public IReadOnlyList<CompareLog> Logs => _logs.ToImmutableList();
 
+        /// <summary>
+        /// The top-level log for this DbContext, set by <see cref="CompareModelToDatabase"/>
+        /// </summary>
+        public CompareLog DbContextLog { get; private set; }
+
         public Stage1Comparer(DbContext context, CompareEfSqlConfig config = null, List<CompareLog> logs = null)
         {
             _dbContext = context;
@@ -57,7 +62,7 @@ namespace EfSchemaCompare.Internal
             _databaseColumnFormatter = new PostgresDatabaseColumnFormatter();
         }
 
-        private static IConstraintReader CreateConstraintReader(DbContext context)
+        internal static IConstraintReader CreateConstraintReader(DbContext context)
         {
             return string.Equals(context.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal)
                 ? new PostgresConstraintReader()
@@ -70,8 +75,8 @@ namespace EfSchemaCompare.Internal
             var dbLogger = new CompareLogger2(CompareType.DbContext, _dbContextName, _logs, _ignoreList, () => _hasErrors = true);
 
             //Check things about the database, such as sequences
-            dbLogger.MarkAsOk(_dbContextName);
-            CheckDatabaseOk(_logs.Last(), _model, databaseModel);
+            DbContextLog = dbLogger.MarkAsOk(_dbContextName);
+            CheckDatabaseOk(DbContextLog, _model, databaseModel);
 
             _tableViewDict = databaseModel.Tables.ToDictionary(x => x.FormSchemaTableFromDatabase(_defaultSchema), _caseComparer);
             var entitiesNotMappedToTableOrView = _model.GetEntityTypes().

@@ -47,6 +47,11 @@ _Thanks to GitHub @bgrauer-atacom and @lweberprb for suggesting that this librar
 - **Primary key:** SQL constraint name, properties
 - **Foreign keys:** SQL constraint name, Delete behavior, properties
 - **Indexes:** SQL constraint name, Unique/not unique, properties
+- **Functions and triggers (PostgreSQL only):** EF Core can only declare these (`HasDbFunction`, `ToTable(tb => tb.HasTrigger(...))`), not hold their SQL, so this checks by identity, not body:
+  - Every declared function/trigger must exist. Functions are matched on schema, name *and* argument types, e.g. `public.slugify(text)`, so each overload must be declared. Triggers are matched on schema, table and name.
+  - Every function, procedure, aggregate and trigger in the database that isn't declared by one of the DbContexts is reported as `EXTRA IN DATABASE`, on all tables, not just mapped ones. Only objects built into PostgreSQL and objects owned by an extension are skipped. A trigger's function (`RETURNS trigger`) can't be declared via `HasDbFunction`, so it is always reported - suppress it with `IgnoreTheseErrors` if you want to keep it.
+  - Typical errors: `EXTRA IN DATABASE: Function 'public.touch_widget()'. Found = function returning trigger` and `EXTRA IN DATABASE: Trigger 'public.widget.trg_widget_touch'. Found = CREATE TRIGGER ...`
+  - Requires PostgreSQL 13 or later.
 
 ### Stage 2 - checks on database
 
