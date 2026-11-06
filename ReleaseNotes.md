@@ -15,6 +15,7 @@
 - New feature: compares alternate keys (`HasAlternateKey`) with the database's `UNIQUE` constraints, on their name and columns in order, and stage 2 reports `UNIQUE` constraints that no alternate key creates - see README.
 - Changed: a unique index (`HasIndex(...).IsUnique()`) no longer matches a `UNIQUE` constraint with the same name, as EF Core creates a unique index for it, not a constraint.
 - NOTE: If your database has `UNIQUE` constraints where EF Core expects unique indexes, or ones EF Core doesn't declare, you will see new errors. Fix the database or EF Core configuration, or add an ignore line for each one.
+- Fixed: the column holding an entity mapped to JSON (`ToJson`) was marked OK without being checked. It is now compared on whether it exists, its type and its nullability, using the column name `ToJson` gives it, so one not named after its navigation is no longer reported as an extra column.
 
 ## 10.2.0-daydream
 

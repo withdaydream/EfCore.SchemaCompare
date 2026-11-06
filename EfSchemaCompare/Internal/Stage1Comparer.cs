@@ -371,20 +371,23 @@ namespace EfSchemaCompare.Internal
 
             #region JsonMapping
             //Json Mapping Start----------------------------------------------------------------------------
-            //We look for entities that have Json Mapping and find out what properties holds the Json data
-            var declaringEntityTypes = typeBase.ContainingEntityType.GetNavigations()
-                .Where(x => x.TargetEntityType.IsMappedToJson())
-                .Select(x => x.TargetEntityType.ClrType).ToArray();
-            if (declaringEntityTypes.Any())
+            //An entity mapped to JSON is held in one column of its owner's table, named by ToJson, which is compared like any other column
+            foreach (var navigation in typeBase.ContainingEntityType.GetNavigations()
+                         .Where(x => x.TargetEntityType.IsMappedToJson()))
             {
-                
-                //There are properties that have a string to hold the Json Data
-                foreach (var jsonProperty in typeBase.ClrType.GetProperties()
-                             .Where(x => declaringEntityTypes.Contains(x.PropertyType)))
+                var jsonColumnName = navigation.TargetEntityType.GetContainerColumnName();
+                var colLogger = new CompareLogger2(CompareType.Property, navigation.Name, log.SubLogs, _ignoreList, () => _hasErrors = true);
+                if (jsonColumnName == null || !columnDict.TryGetValue(jsonColumnName, out var jsonColumn))
                 {
-                    var colLogger = new CompareLogger2(CompareType.Property, jsonProperty.Name, log.SubLogs, _ignoreList, () => _hasErrors = true);
-                    colLogger.MarkAsOk(jsonProperty.Name);
+                    colLogger.NotInDatabase(jsonColumnName, CompareAttributes.ColumnName);
+                    continue;
                 }
+                var jsonRelColumn = GetRelationalColumn(jsonColumnName, table, isView);
+                var jsonError = colLogger.CheckDifferent(jsonRelColumn.StoreType, jsonColumn.StoreType, CompareAttributes.ColumnType, _caseComparison);
+                jsonError |= colLogger.CheckDifferent(jsonRelColumn.IsNullable.NullableAsString(),
+                    jsonColumn.IsNullable.NullableAsString(), CompareAttributes.Nullability, _caseComparison);
+                if (!jsonError)
+                    colLogger.MarkAsOk(jsonColumnName);
             }
             //Json Mapping end------------------------------------------------------------------------------
             #endregion JsonMapping

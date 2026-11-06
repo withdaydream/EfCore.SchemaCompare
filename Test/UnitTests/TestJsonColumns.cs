@@ -234,9 +234,8 @@ public class TestJsonColumns
         var hasErrors = comparer.CompareEfWithDb(context);
 
         //VERIFY
-        //Just print errors
-        hasErrors.ShouldBeTrue();
-        comparer.GetAllErrors.ShouldEqual("EXTRA IN DATABASE: Column 'HeadEntries', column name. Found = DifferentColumnName");
+        //The JSON column mapped with ToJson("DifferentColumnName") is compared by that name, so it isn't reported as an extra column
         _output.WriteLine(comparer.GetAllErrors);
+        hasErrors.ShouldBeFalse(comparer.GetAllErrors);
     }
 }
