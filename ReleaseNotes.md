@@ -6,6 +6,10 @@
 - New feature (PostgreSQL): compares the storage parameters set via `HasStorageParameter` on entities and indexes, e.g. `fillfactor`, with the database. A parameter EF Core doesn't set must not be set in the database, even to its default, and values must be the same text, e.g. `on` doesn't match `true` - see README.
 - Indexes and primary keys are now compared on their columns in order. An index or key whose columns are in a different order, or that has extra columns in the database, was reported as OK, but is now reported as `DIFFERENT: ... columns. Expected = a,b, found = b,a`.
 - NOTE: If your database has indexes or keys like that you will see new `DIFFERENT` errors. Fix the database or EF Core configuration, or add an ignore line for each one.
+- New feature: compares collations (database, column and index) and comments (table and column). A collation or comment EF Core doesn't set must not be set in the database - see README.
+- New feature (PostgreSQL): compares a column's compression method, how its value is generated (identity always, identity by default, serial or none), and an identity column's sequence options, e.g. its start value - see README.
+- Changed (PostgreSQL): a column's compression method is no longer added to its database type. If you used `HasColumnType("text COMPRESSION lz4")` to make it match, use `UseCompressionMethod("lz4")` instead.
+- NOTE: These checks may report differences that were hidden before, e.g. comments added by SQL scripts. Fix the database or EF Core configuration, or add an ignore line for each one.
 
 ## 10.2.0-daydream
 

@@ -42,11 +42,17 @@ _Thanks to GitHub @bgrauer-atacom and @lweberprb for suggesting that this librar
 
 ### Stage 1 - checks on EF Core side
 
-- **Table/View exists**: That a table or view that an entity class is mapped exists. This checks both table/view name and schema name
-- **Property/Column:**  exists, database type (including size and precision), nullability, computed column (including persistence), column default value, when updated (e.g. column is updated `OnAdd` for a int primary key which is provided by the database)
+- **Database:** collation (`modelBuilder.UseCollation`). The scaffolder only provides the database's collation if it isn't the server's default, so a model without one matches a database using the default.
+- **Table/View exists**: That a table or view that an entity class is mapped exists. This checks both table/view name and schema name. A table's comment (`ToTable(t => t.HasComment(...))`) is compared too.
+- **Property/Column:**  exists, database type (including size and precision), nullability, computed column (including persistence), column default value, when updated (e.g. column is updated `OnAdd` for a int primary key which is provided by the database). For table columns: collation (`UseCollation`) and comment (`HasComment`), where a collation or comment that EF Core doesn't set must not be set in the database, even to the database's default collation.
+- **Column compression and identity (PostgreSQL only):**
+  - The compression method (`UseCompressionMethod`) must match. One that EF Core doesn't set must not be set in the database, even to the default `pglz`.
+  - How the database generates the column's value must match: `IdentityAlwaysColumn` (`UseIdentityAlwaysColumn`), `IdentityByDefaultColumn` (`UseIdentityByDefaultColumn`, EF Core's default for an integer key), `SerialColumn` (`UseSerialColumn`) or `None`. Strategies that don't change the column, e.g. `UseHiLo`, count as `None`.
+  - An identity column's sequence options (`HasIdentityOptions`) must match: start, increment, min, max, cycle and cache. PostgreSQL stores every option's value, so it can't tell an option set to its default from one that wasn't set. An option EF Core doesn't set is therefore compared as its default value.
+  - Typical errors: `DIFFERENT: Widget->Property 'Id', value generation strategy. Expected = IdentityAlwaysColumn, found = IdentityByDefaultColumn` and `DIFFERENT: Widget->Property 'Id', identity options. Expected = increment=5, found = increment=10`
 - **Primary key:** SQL constraint name, columns in order (a different order or an extra column in the database is reported, e.g. `DIFFERENT: Pair->PrimaryKey 'pk_pair', columns. Expected = second,first, found = first,second`)
 - **Foreign keys:** SQL constraint name, Delete behavior, properties
-- **Indexes:** SQL constraint name, Unique/not unique, columns in order (a different order or an extra column in the database is reported, e.g. `DIFFERENT: Pair->Index 'first', columns. Expected = first, found = first,second`). Included columns, e.g. `IncludeProperties`, aren't part of an index's columns.
+- **Indexes:** SQL constraint name, Unique/not unique, columns in order (a different order or an extra column in the database is reported, e.g. `DIFFERENT: Pair->Index 'first', columns. Expected = first, found = first,second`). Included columns, e.g. `IncludeProperties`, aren't part of an index's columns. An index's collations (`UseCollation` on an index) are compared too.
 - **Functions and triggers (PostgreSQL only):** EF Core can only declare these (`HasDbFunction`, `ToTable(tb => tb.HasTrigger(...))`), not hold their SQL, so this checks by identity, not body:
   - Every declared function/trigger must exist. Functions are matched on schema, name *and* argument types, e.g. `public.slugify(text)`, so each overload must be declared. Triggers are matched on schema, table and name.
   - A declared function that is built into PostgreSQL or comes from an extension, e.g. `HasDbFunction(...).HasName("jsonb_extract_path_text")`, only needs its name to exist, because PostgreSQL resolves calls to these via variadic arguments, implicit casts, and casts written as calls such as `timestamptz(text)`. A function you create yourself with the same name is still compared on its full signature.
@@ -91,7 +97,6 @@ _Thanks to GitHub @bgrauer-atacom and @lweberprb for suggesting that this librar
 The following are things I haven't bothered to check.
 
 - Checking of Alternative keys
-- Checking of collations
 - Checking of sequences
 
 ## Introduction to how EfSchemaCompare works

@@ -39,7 +39,6 @@ namespace EfSchemaCompare.Internal
 
         private readonly List<CompareLog> _logs;
         private readonly IConstraintReader _constraintReader;
-        private readonly IDatabaseColumnFormatter _databaseColumnFormatter;
         public IReadOnlyList<CompareLog> Logs => _logs.ToImmutableList();
 
         /// <summary>
@@ -60,7 +59,6 @@ namespace EfSchemaCompare.Internal
             _caseComparison = _caseComparer.GetStringComparison();
 
             _constraintReader = CreateConstraintReader(context);
-            _databaseColumnFormatter = new PostgresDatabaseColumnFormatter();
         }
 
         internal static IConstraintReader CreateConstraintReader(DbContext context)
@@ -78,6 +76,8 @@ namespace EfSchemaCompare.Internal
             //Check things about the database, such as sequences
             DbContextLog = dbLogger.MarkAsOk(_dbContextName);
             CheckDatabaseOk(DbContextLog, _model, databaseModel);
+            //The scaffolder only provides the database's collation if it isn't the server's default
+            dbLogger.CheckDifferent(_designTimeModel.GetCollation(), databaseModel.Collation, CompareAttributes.Collation, _caseComparison);
 
             _tableViewDict = databaseModel.Tables.ToDictionary(x => x.FormSchemaTableFromDatabase(_defaultSchema), _caseComparer);
             _storageParameterComparer = new StorageParameterComparer(_constraintReader.GetStorageParameters(_dbContext));
@@ -130,7 +130,7 @@ namespace EfSchemaCompare.Internal
                 }
             }
 
-            CompareTableStorageParameters();
+            CompareTables();
 
             var dbCheckConstraints = _constraintReader.GetCheckConstraints(_dbContext);
             var modelCheckConstraints = _designTimeModel.GetCheckConstraints();
@@ -152,16 +152,18 @@ namespace EfSchemaCompare.Internal
             //var logger = new CompareLogger2(CompareType.Sequence, <sequence name>, _logs);
         }
 
-        //This is done per table, not per entity, as with TPH and table splitting many entities map to one table
-        private void CompareTableStorageParameters()
+        //This compares the table's comment and storage parameters.
+        //It is done per table, not per entity, as with TPH and table splitting many entities map to one table
+        private void CompareTables()
         {
-            //Storage parameters are design-time annotations, so they aren't in the runtime model
+            //Comments and storage parameters are design-time annotations, so they aren't in the runtime model
             foreach (var table in _designTimeModel.GetRelationalModel().Tables)
             {
                 var schemaTable = table.Schema.FormSchemaTable(table.Name);
                 if (!_tableViewDict.TryGetValue(schemaTable, out var databaseTable))
                     continue; //A missing table is reported by the entity that maps to it
                 var logger = new CompareLogger2(CompareType.Table, schemaTable, DbContextLog.SubLogs, _ignoreList, () => _hasErrors = true);
+                logger.CheckDifferent(table.Comment, databaseTable.Comment, CompareAttributes.Comment, _caseComparison);
                 _storageParameterComparer.CompareTable(logger, databaseTable.Schema, databaseTable.Name,
                     table.EntityTypeMappings.SelectMany(x => x.TypeBase.GetAnnotations()));
             }
@@ -263,9 +265,12 @@ namespace EfSchemaCompare.Internal
                             string.Join(",", indexDict[indexName].Columns.Select(x => x.Name)), CompareAttributes.Columns, _caseComparison);
                     error |= logger.CheckDifferent(entityIdx.IsUnique.ToString(),
                         indexDict[indexName].IsUnique.ToString(), CompareAttributes.Unique, _caseComparison);
+                    var designTimeIndex = FindDesignTimeIndex(entityIdx);
+                    error |= logger.CheckDifferent(DatabaseIndexData.FormatCollations(designTimeIndex?[RelationalAnnotationNames.Collation]),
+                        indexDict[indexName].Collations, CompareAttributes.Collation, _caseComparison);
                     //A storage parameter difference doesn't stop the index being marked OK, as otherwise stage 2 would say it isn't used
                     _storageParameterComparer.CompareIndex(logger, table.Schema, table.Name, indexName,
-                        FindDesignTimeIndex(entityIdx)?.GetAnnotations() ?? []);
+                        designTimeIndex?.GetAnnotations() ?? []);
                     if (!error)
                         logger.MarkAsOk(indexName);
                 }
@@ -276,7 +281,7 @@ namespace EfSchemaCompare.Internal
             }
         }
 
-        //Storage parameters are design-time annotations, so they aren't on the runtime model's index
+        //Collations and storage parameters are design-time annotations, so they aren't on the runtime model's index
         private IIndex FindDesignTimeIndex(IIndex index)
         {
             return _designTimeModel.FindEntityType(index.DeclaringEntityType.Name)?.GetDeclaredIndexes()
@@ -407,7 +412,7 @@ namespace EfSchemaCompare.Internal
         private bool ComparePropertyToColumn(IColumnBase relColumn, CompareLogger2 logger, 
             IProperty property, DatabaseColumn column, bool isView, bool isOwned)
         {
-            var error = logger.CheckDifferent(property.GetColumnType(), _databaseColumnFormatter.GetColumnType(column), CompareAttributes.ColumnType, _caseComparison);
+            var error = logger.CheckDifferent(property.GetColumnType(), column.StoreType, CompareAttributes.ColumnType, _caseComparison);
             error |= logger.CheckDifferent(relColumn.IsNullable.NullableAsString(), 
                 column.IsNullable.NullableAsString(), CompareAttributes.Nullability, _caseComparison);
             error |= logger.CheckDifferent(property.GetComputedColumnSql().RemoveUnnecessaryBrackets(),
@@ -423,8 +428,55 @@ namespace EfSchemaCompare.Internal
             error |= logger.CheckDifferent(defaultValue,
                     column.DefaultValueSql.RemoveUnnecessaryBrackets(), CompareAttributes.DefaultValueSql, _caseComparison);
             if (!isView)
+            {
                 error |= CheckValueGenerated(logger, property, column, isOwned);
+                error |= CompareColumnSettings(logger, property, column);
+            }
             return error;
+        }
+
+        private const string NpgsqlCompressionAnnotation = "Npgsql:Compression:";
+        private const string NpgsqlValueGenerationStrategyAnnotation = "Npgsql:ValueGenerationStrategy";
+
+        //The collation, comment, compression method and identity of a table's column
+        private bool CompareColumnSettings(CompareLogger2 logger, IProperty property, DatabaseColumn column)
+        {
+            var designTimeColumn = FindDesignTimeColumn(column.Name, column.Table);
+            if (designTimeColumn == null)
+                return false;
+
+            var error = logger.CheckDifferent(designTimeColumn.Collation, column.Collation, CompareAttributes.Collation, _caseComparison);
+            error |= logger.CheckDifferent(designTimeColumn.Comment, column.Comment, CompareAttributes.Comment, _caseComparison);
+            error |= logger.CheckDifferent(designTimeColumn[NpgsqlCompressionAnnotation] as string, column[NpgsqlCompressionAnnotation] as string,
+                CompareAttributes.Compression, StringComparison.OrdinalIgnoreCase);
+
+            var efStrategy = GetColumnValueGenerationStrategy(designTimeColumn[NpgsqlValueGenerationStrategyAnnotation]);
+            var dbStrategy = GetColumnValueGenerationStrategy(column[NpgsqlValueGenerationStrategyAnnotation]);
+            error |= logger.CheckDifferent(efStrategy, dbStrategy, CompareAttributes.ValueGenerationStrategy, StringComparison.Ordinal);
+            if (efStrategy == dbStrategy && efStrategy.StartsWith("Identity", StringComparison.Ordinal))
+            {
+                var efOptions = PostgresIdentityOptions.Parse(designTimeColumn[PostgresIdentityOptions.AnnotationName] as string, property.GetColumnType());
+                var dbOptions = PostgresIdentityOptions.Parse(column[PostgresIdentityOptions.AnnotationName] as string, column.StoreType);
+                foreach (var (efOption, dbOption) in efOptions.GetOptionTexts().Zip(dbOptions.GetOptionTexts()))
+                    error |= logger.CheckDifferent(efOption, dbOption, CompareAttributes.IdentityOptions, StringComparison.Ordinal);
+            }
+            return error;
+        }
+
+        //Only the strategies that are part of the column's definition. Others, e.g. SequenceHiLo, don't change the column
+        private static string GetColumnValueGenerationStrategy(object strategy)
+        {
+            var name = strategy?.ToString();
+            return name is "IdentityAlwaysColumn" or "IdentityByDefaultColumn" or "SerialColumn" ? name : "None";
+        }
+
+        //Collations, comments, compression methods and identities are design-time annotations, so they aren't in the runtime model.
+        //The relational model's column holds what EF Core would create, e.g. a TPT derived table's key column isn't an identity
+        private IColumn FindDesignTimeColumn(string columnName, DatabaseTable table)
+        {
+            return _designTimeModel.GetRelationalModel().Tables
+                .SingleOrDefault(x => x.Schema.FormSchemaTable(x.Name) == table.FormSchemaTableFromDatabase(_defaultSchema))
+                ?.FindColumn(columnName);
         }
 
         //this gets the relational column, which has correct IsNullable value (might have other things too)

@@ -47,7 +47,11 @@ namespace EfSchemaCompare
         //Tables and indexes (PostgreSQL only), e.g. fillfactor
         StorageParameter,
         //The ordered list of an index's or primary key's columns
-        Columns
+        Columns,
+        //Database, column and index collations, and table and column comments
+        Collation, Comment,
+        //Columns (PostgreSQL only)
+        Compression, ValueGenerationStrategy, IdentityOptions
     }
 #pragma warning restore 1591
 
