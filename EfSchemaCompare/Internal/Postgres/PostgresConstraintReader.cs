@@ -8,6 +8,11 @@ namespace EfSchemaCompare.Internal.Postgres;
 
 public class PostgresConstraintReader : IConstraintReader
 {
+    /// <summary>
+    /// Returns the check constraints of the DbContext's tables. Only real check constraints (contype 'c') are read, so
+    /// PostgreSQL's NOT NULL constraints aren't included, and each constraint is read with its own table, as two tables
+    /// can have check constraints with the same name.
+    /// </summary>
     public IReadOnlyList<IConstraintReader.CheckConstraint> GetCheckConstraints(DbContext dbContext)
     {
         var tableNames = dbContext.Model.GetEntityTypes().Select(object (x) => x.GetSchemaQualifiedTableName()).ToList();
@@ -16,19 +21,18 @@ public class PostgresConstraintReader : IConstraintReader
             FormattableStringFactory.Create(
                 $$"""
                   SELECT
-                      tc.table_name,
-                      cc.constraint_name,
-                      cc.check_clause
-                  FROM 
-                      information_schema.table_constraints tc
-                  JOIN 
-                      information_schema.check_constraints cc 
-                      ON tc.constraint_name = cc.constraint_name
-                  WHERE 
-                      tc.constraint_type = 'CHECK'
-                      AND table_name IN ({{String.Join(", ", tableNames.Select((_, i) => $$"""{{{i}}}"""))}})
-                      AND (cc.check_clause NOT LIKE '% IS NOT NULL' AND cc.constraint_name NOT LIKE '%_not_null') -- exclude default not null constraints
-                  ORDER BY cc.constraint_name
+                      c.relname AS table_name,
+                      con.conname AS constraint_name,
+                      -- The same text information_schema.check_constraints gives, i.e. without the leading "CHECK "
+                      substring(pg_get_constraintdef(con.oid) from 7) AS check_clause
+                  FROM
+                      pg_constraint AS con
+                  JOIN
+                      pg_class AS c ON c.oid = con.conrelid
+                  WHERE
+                      con.contype = 'c'
+                      AND replace(con.conrelid::regclass::text, '"', '') IN ({{String.Join(", ", tableNames.Select((_, i) => $$"""{{{i}}}"""))}})
+                  ORDER BY con.conname
                   """,
                 tableNames.ToArray()
             )
