@@ -257,6 +257,10 @@ namespace EfSchemaCompare.Internal
                             error = true;
                         }
                     }
+                    //A missing column is reported above, so this finds the columns in a different order, or extra columns
+                    if (!error)
+                        error |= logger.CheckDifferent(allColumnNames,
+                            string.Join(",", indexDict[indexName].Columns.Select(x => x.Name)), CompareAttributes.Columns, _caseComparison);
                     error |= logger.CheckDifferent(entityIdx.IsUnique.ToString(),
                         indexDict[indexName].IsUnique.ToString(), CompareAttributes.Unique, _caseComparison);
                     //A storage parameter difference doesn't stop the index being marked OK, as otherwise stage 2 would say it isn't used
@@ -385,6 +389,17 @@ namespace EfSchemaCompare.Internal
                     colLogger.NotInDatabase(GetColumnNameTakingIntoAccountSchema(property, table), CompareAttributes.ColumnName);
                 }
             }
+
+            //A missing key column is reported above, so this finds the key's columns in a different order, or extra columns
+            var efPrimaryKey = typeBase.ContainingEntityType.FindPrimaryKey();
+            if (!isView && efPrimaryKey != null && table.PrimaryKey != null)
+            {
+                var efKeyColumns = efPrimaryKey.Properties.Select(x => GetColumnNameTakingIntoAccountSchema(x, table)).ToList();
+                if (efKeyColumns.All(x => x != null && primaryKeyDict.ContainsKey(x)))
+                    pKeyLogger.CheckDifferent(string.Join(",", efKeyColumns),
+                        string.Join(",", table.PrimaryKey.Columns.Select(x => x.Name)), CompareAttributes.Columns, _caseComparison);
+            }
+
             if (!pKeyError)
                 pKeyLogger.MarkAsOk(efPKeyConstraintName);
         }

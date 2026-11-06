@@ -45,7 +45,9 @@ namespace EfSchemaCompare
         //MarkAsNotChecked
         NotMappedToDatabase,
         //Tables and indexes (PostgreSQL only), e.g. fillfactor
-        StorageParameter
+        StorageParameter,
+        //The ordered list of an index's or primary key's columns
+        Columns
     }
 #pragma warning restore 1591
 

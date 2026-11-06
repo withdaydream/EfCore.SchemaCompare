@@ -44,9 +44,9 @@ _Thanks to GitHub @bgrauer-atacom and @lweberprb for suggesting that this librar
 
 - **Table/View exists**: That a table or view that an entity class is mapped exists. This checks both table/view name and schema name
 - **Property/Column:**  exists, database type (including size and precision), nullability, computed column (including persistence), column default value, when updated (e.g. column is updated `OnAdd` for a int primary key which is provided by the database)
-- **Primary key:** SQL constraint name, properties
+- **Primary key:** SQL constraint name, columns in order (a different order or an extra column in the database is reported, e.g. `DIFFERENT: Pair->PrimaryKey 'pk_pair', columns. Expected = second,first, found = first,second`)
 - **Foreign keys:** SQL constraint name, Delete behavior, properties
-- **Indexes:** SQL constraint name, Unique/not unique, properties
+- **Indexes:** SQL constraint name, Unique/not unique, columns in order (a different order or an extra column in the database is reported, e.g. `DIFFERENT: Pair->Index 'first', columns. Expected = first, found = first,second`). Included columns, e.g. `IncludeProperties`, aren't part of an index's columns.
 - **Functions and triggers (PostgreSQL only):** EF Core can only declare these (`HasDbFunction`, `ToTable(tb => tb.HasTrigger(...))`), not hold their SQL, so this checks by identity, not body:
   - Every declared function/trigger must exist. Functions are matched on schema, name *and* argument types, e.g. `public.slugify(text)`, so each overload must be declared. Triggers are matched on schema, table and name.
   - A declared function that is built into PostgreSQL or comes from an extension, e.g. `HasDbFunction(...).HasName("jsonb_extract_path_text")`, only needs its name to exist, because PostgreSQL resolves calls to these via variadic arguments, implicit casts, and casts written as calls such as `timestamptz(text)`. A function you create yourself with the same name is still compared on its full signature.
