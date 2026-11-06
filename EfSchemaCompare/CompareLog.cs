@@ -46,12 +46,14 @@ namespace EfSchemaCompare
         NotMappedToDatabase,
         //Tables and indexes (PostgreSQL only), e.g. fillfactor
         StorageParameter,
-        //The ordered list of an index's or primary key's columns
+        //The ordered list of an index's, primary key's or foreign key's columns
         Columns,
         //Database, column and index collations, and table and column comments
         Collation, Comment,
         //Columns (PostgreSQL only)
-        Compression, ValueGenerationStrategy, IdentityOptions
+        Compression, ValueGenerationStrategy, IdentityOptions,
+        //The ordered list of the columns a foreign key references
+        PrincipalColumns
     }
 #pragma warning restore 1591
 

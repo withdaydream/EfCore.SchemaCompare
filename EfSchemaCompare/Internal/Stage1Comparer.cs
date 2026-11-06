@@ -192,7 +192,8 @@ namespace EfSchemaCompare.Internal
                 {
                     //Now check every foreign key
                     var error = false;
-                    var thisKeyCols = fKeyDict[constraintName].Columns.ToDictionary(x => x.Name, _caseComparer);
+                    var databaseFKey = fKeyDict[constraintName];
+                    var thisKeyCols = databaseFKey.Columns.ToDictionary(x => x.Name, _caseComparer);
                     foreach (var fKeyProp in entityFKeyProps)
                     {
                         var columnName = GetColumnNameTakingIntoAccountSchema( fKeyProp, table);
@@ -201,6 +202,19 @@ namespace EfSchemaCompare.Internal
                             logger.NotInDatabase(columnName);
                             error = true;
                         }
+                    }
+                    //A missing column is reported above, so these find the columns in a different order, or extra columns.
+                    //The principal key's columns are found in the database's principal table, so they are only compared if EF Core maps it
+                    if (!error)
+                    {
+                        error |= logger.CheckDifferent(
+                            string.Join(",", entityFKeyProps.Select(x => GetColumnNameTakingIntoAccountSchema(x, table))),
+                            string.Join(",", databaseFKey.Columns.Select(x => x.Name)), CompareAttributes.Columns, _caseComparison);
+                        var principalColumns = entityFKey.PrincipalKey.Properties
+                            .Select(x => GetColumnNameTakingIntoAccountSchema(x, databaseFKey.PrincipalTable)).ToList();
+                        if (principalColumns.All(x => x != null))
+                            error |= logger.CheckDifferent(string.Join(",", principalColumns),
+                                string.Join(",", databaseFKey.PrincipalColumns.Select(x => x.Name)), CompareAttributes.PrincipalColumns, _caseComparison);
                     }
                     error |= logger.CheckDifferent(entityFKey.DeleteBehavior.ToString(),
                         fKeyDict[constraintName].OnDelete.ConvertReferentialActionToDeleteBehavior(entityFKey.DeleteBehavior),

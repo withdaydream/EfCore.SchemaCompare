@@ -51,12 +51,17 @@ public class PostgresConstraintReader : IConstraintReader
                       on_update,
                       on_delete
                   FROM (
+                      -- One row per foreign key, with its columns in order, joined like the model's, e.g. "a, b"
                       SELECT
                           conname AS constraint_name,
                           replace(conrelid::regclass::text, '"', '') AS table_name,
-                          a.attname AS column_name,
+                          (SELECT string_agg(a.attname::text, ', ' ORDER BY k.ord)
+                           FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+                           JOIN pg_attribute AS a ON a.attrelid = c.conrelid AND a.attnum = k.attnum) AS column_name,
                           replace(confrelid::regclass::text, '"', '') AS foreign_table_name,
-                          af.attname AS foreign_column_name,
+                          (SELECT string_agg(a.attname::text, ', ' ORDER BY k.ord)
+                           FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum, ord)
+                           JOIN pg_attribute AS a ON a.attrelid = c.confrelid AND a.attnum = k.attnum) AS foreign_column_name,
                           CASE c.confupdtype
                               WHEN 'a' THEN 'NO ACTION'
                               WHEN 'r' THEN 'RESTRICT'
@@ -73,10 +78,6 @@ public class PostgresConstraintReader : IConstraintReader
                           END AS on_delete
                       FROM
                           pg_constraint AS c
-                      JOIN
-                          pg_attribute AS a ON a.attnum = ANY(c.conkey) AND a.attrelid = c.conrelid
-                      JOIN
-                          pg_attribute AS af ON af.attnum = ANY(c.confkey) AND af.attrelid = c.confrelid
                       WHERE
                          c.contype = 'f'
                   ) AS R

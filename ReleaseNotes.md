@@ -10,6 +10,8 @@
 - New feature (PostgreSQL): compares a column's compression method, how its value is generated (identity always, identity by default, serial or none), and an identity column's sequence options, e.g. its start value - see README.
 - Changed (PostgreSQL): a column's compression method is no longer added to its database type. If you used `HasColumnType("text COMPRESSION lz4")` to make it match, use `UseCompressionMethod("lz4")` instead.
 - NOTE: These checks may report differences that were hidden before, e.g. comments added by SQL scripts. Fix the database or EF Core configuration, or add an ignore line for each one.
+- Foreign keys are now compared on their columns, and the columns they reference, in order. One whose columns are in a different order was reported as OK, but is now reported as `DIFFERENT: ... columns` or `DIFFERENT: ... principal columns`. Fix the database or EF Core configuration, or add an ignore line for each one.
+- Fixed (PostgreSQL): a foreign key with more than one column made the comparison throw an exception, because the database's foreign keys were read as a row per pair of columns.
 
 ## 10.2.0-daydream
 
