@@ -12,6 +12,9 @@
 - NOTE: These checks may report differences that were hidden before, e.g. comments added by SQL scripts. Fix the database or EF Core configuration, or add an ignore line for each one.
 - Foreign keys are now compared on their columns, and the columns they reference, in order. One whose columns are in a different order was reported as OK, but is now reported as `DIFFERENT: ... columns` or `DIFFERENT: ... principal columns`. Fix the database or EF Core configuration, or add an ignore line for each one.
 - Fixed (PostgreSQL): a foreign key with more than one column made the comparison throw an exception, because the database's foreign keys were read as a row per pair of columns.
+- New feature: compares alternate keys (`HasAlternateKey`) with the database's `UNIQUE` constraints, on their name and columns in order, and stage 2 reports `UNIQUE` constraints that no alternate key creates - see README.
+- Changed: a unique index (`HasIndex(...).IsUnique()`) no longer matches a `UNIQUE` constraint with the same name, as EF Core creates a unique index for it, not a constraint.
+- NOTE: If your database has `UNIQUE` constraints where EF Core expects unique indexes, or ones EF Core doesn't declare, you will see new errors. Fix the database or EF Core configuration, or add an ignore line for each one.
 
 ## 10.2.0-daydream
 

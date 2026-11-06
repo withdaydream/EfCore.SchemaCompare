@@ -39,14 +39,6 @@ namespace EfSchemaCompare.Internal
             Collations = FormatCollations(index[RelationalAnnotationNames.Collation]);
         }
 
-        public DatabaseIndexData(DatabaseUniqueConstraint index)
-        {
-            Table = index.Table;
-            Name = index.Name;
-            Columns = index.Columns;
-            IsUnique = true;
-        }
-
         /// <summary>
         ///     Formats the Relational:Collation annotation of an index, which holds a collation per column, e.g. "C,default",
         ///     where "default" is a column without one. Returns null if there isn't one
@@ -61,11 +53,13 @@ namespace EfSchemaCompare.Internal
             };
         }
 
-        public static IEnumerable<DatabaseIndexData> GetIndexesAndUniqueConstraints(DatabaseTable table)
+        /// <summary>
+        ///     A unique constraint isn't included, as it isn't an index. EF Core creates one for an alternate key,
+        ///     and a unique index for HasIndex(...).IsUnique(), so they are compared with alternate keys
+        /// </summary>
+        public static IEnumerable<DatabaseIndexData> GetIndexes(DatabaseTable table)
         {
-            var result = table.Indexes.Select(x => new DatabaseIndexData(x)).ToList();
-            result.AddRange(table.UniqueConstraints.Select(x => new DatabaseIndexData(x)));
-            return result;
+            return table.Indexes.Select(x => new DatabaseIndexData(x)).ToList();
         }
     }
 }

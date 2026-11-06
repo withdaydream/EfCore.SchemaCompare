@@ -25,7 +25,9 @@ namespace EfSchemaCompare
         //Used for both
         PrimaryKey, ForeignKey, Index,
         //Database objects that EF Core can only declare, e.g. HasDbFunction, HasTrigger
-        Function, Trigger}
+        Function, Trigger,
+        //A UNIQUE constraint, which EF Core creates for an alternate key
+        AlternateKey}
     /// <summary>
     /// This defines the result of a comparision
     /// </summary>

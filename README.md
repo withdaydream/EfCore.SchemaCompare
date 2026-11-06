@@ -52,7 +52,8 @@ _Thanks to GitHub @bgrauer-atacom and @lweberprb for suggesting that this librar
   - Typical errors: `DIFFERENT: Widget->Property 'Id', value generation strategy. Expected = IdentityAlwaysColumn, found = IdentityByDefaultColumn` and `DIFFERENT: Widget->Property 'Id', identity options. Expected = increment=5, found = increment=10`
 - **Primary key:** SQL constraint name, columns in order (a different order or an extra column in the database is reported, e.g. `DIFFERENT: Pair->PrimaryKey 'pk_pair', columns. Expected = second,first, found = first,second`)
 - **Foreign keys:** SQL constraint name, Delete behavior, columns in order, and the columns it references in order (e.g. `DIFFERENT: Child->ForeignKey 'fk_child_parent', columns. Expected = c1,c2, found = c2,c1` and `... principal columns. Expected = p1,p2, found = p2,p1`)
-- **Indexes:** SQL constraint name, Unique/not unique, columns in order (a different order or an extra column in the database is reported, e.g. `DIFFERENT: Pair->Index 'first', columns. Expected = first, found = first,second`). Included columns, e.g. `IncludeProperties`, aren't part of an index's columns. An index's collations (`UseCollation` on an index) are compared too.
+- **Indexes:** SQL constraint name, Unique/not unique, columns in order (a different order or an extra column in the database is reported, e.g. `DIFFERENT: Pair->Index 'first', columns. Expected = first, found = first,second`). Included columns, e.g. `IncludeProperties`, aren't part of an index's columns. An index's collations (`UseCollation` on an index) are compared too. A unique index (`HasIndex(...).IsUnique()`) only matches a unique index in the database, not a `UNIQUE` constraint.
+- **Alternate keys:** EF Core creates a `UNIQUE` constraint for an alternate key (`HasAlternateKey`, or a key a foreign key references with `HasPrincipalKey`). This checks its SQL constraint name and columns in order, e.g. `DIFFERENT: Widget->AlternateKey 'ak_widget_code_name', columns. Expected = code,name, found = name,code`. Sqlite's scaffolder doesn't read a unique constraint's name, so on Sqlite an alternate key is reported as `NOT CHECKED`.
 - **Functions and triggers (PostgreSQL only):** EF Core can only declare these (`HasDbFunction`, `ToTable(tb => tb.HasTrigger(...))`), not hold their SQL, so this checks by identity, not body:
   - Every declared function/trigger must exist. Functions are matched on schema, name *and* argument types, e.g. `public.slugify(text)`, so each overload must be declared. Triggers are matched on schema, table and name.
   - A declared function that is built into PostgreSQL or comes from an extension, e.g. `HasDbFunction(...).HasName("jsonb_extract_path_text")`, only needs its name to exist, because PostgreSQL resolves calls to these via variadic arguments, implicit casts, and casts written as calls such as `timestamptz(text)`. A function you create yourself with the same name is still compared on its full signature.
@@ -71,6 +72,7 @@ _Thanks to GitHub @bgrauer-atacom and @lweberprb for suggesting that this librar
 - Unused tables or views
 - Unused columns
 - Unused Indexes
+- Unused unique constraints, i.e. ones no alternate key creates, e.g. `EXTRA IN DATABASE: AlternateKey 'widget', constraint name. Found = uq_widget_name`
 
 ### It check the following EF Core features
 
@@ -96,7 +98,6 @@ _Thanks to GitHub @bgrauer-atacom and @lweberprb for suggesting that this librar
 
 The following are things I haven't bothered to check.
 
-- Checking of Alternative keys
 - Checking of sequences
 
 ## Introduction to how EfSchemaCompare works

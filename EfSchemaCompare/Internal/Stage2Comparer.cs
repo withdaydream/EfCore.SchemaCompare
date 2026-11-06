@@ -35,6 +35,7 @@ namespace EfSchemaCompare.Internal
             LookForUnusedTables(firstStageLogs, _logs.Last());
             LookForUnusedColumns(firstStageLogs, _logs.Last());
             LookForUnusedIndexes(firstStageLogs, _logs.Last());
+            LookForUnusedUniqueConstraints(firstStageLogs);
 
             return _hasErrors;
         }
@@ -101,6 +102,27 @@ namespace EfSchemaCompare.Internal
                         logger.ExtraInDatabase(indexName, CompareAttributes.IndexConstraintName, entityLog.Expected);
                     }
                 }
+            }
+        }
+
+        private void LookForUnusedUniqueConstraints(IReadOnlyList<CompareLog> firstStageLogs)
+        {
+            var logger = new CompareLogger2(CompareType.AlternateKey, null, _logs, _ignoreList, () => _hasErrors = true);
+            var tableDict = _databaseModel.Tables.ToDictionary(x => x.FormSchemaTableFromDatabase(_databaseModel.DefaultSchema), _caseComparer);
+            //Grouped by table, as with TPH and table splitting many entities map to one table, and only one of them declares a key
+            var alternateKeysByTable = firstStageLogs.SelectMany(p => p.SubLogs)
+                .Where(x => x.State == CompareState.Ok && x.Type == CompareType.Entity)
+                .GroupBy(x => x.Expected, _caseComparer)
+                .Select(g => (TableName: g.Key, Used: g.SelectMany(e => e.SubLogs)
+                    .Where(x => x.State == CompareState.Ok && x.Type == CompareType.AlternateKey)
+                    .Select(x => x.Expected).ToHashSet(_caseComparer)));
+
+            foreach (var (tableName, used) in alternateKeysByTable)
+            {
+                if (!tableDict.TryGetValue(tableName, out var table))
+                    continue;
+                foreach (var constraint in table.UniqueConstraints.Where(x => !string.IsNullOrEmpty(x.Name) && !used.Contains(x.Name)))
+                    logger.ExtraInDatabase(constraint.Name, CompareAttributes.ConstraintName, tableName);
             }
         }
     }

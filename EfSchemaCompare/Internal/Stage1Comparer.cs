@@ -123,6 +123,8 @@ namespace EfSchemaCompare.Internal
                     CompareColumns(log, entityType, databaseTable);
                     CompareForeignKeys(log, entityType, databaseTable);
                     CompareIndexes(log, entityType, databaseTable);
+                    if (entityType.GetTableName() != null)
+                        CompareAlternateKeys(log, entityType, databaseTable);
                 }
                 else
                 {
@@ -251,7 +253,7 @@ namespace EfSchemaCompare.Internal
 
         private void CompareIndexes(CompareLog log, ITypeBase entityType, DatabaseTable table)
         {
-            var indexDict = DatabaseIndexData.GetIndexesAndUniqueConstraints(table).ToDictionary(x => x.Name, _caseComparer);
+            var indexDict = DatabaseIndexData.GetIndexes(table).ToDictionary(x => x.Name, _caseComparer);
             foreach (var entityIdx in entityType.ContainingEntityType.GetIndexes())
             {
                 var entityIdxprops = entityIdx.Properties;
@@ -292,6 +294,37 @@ namespace EfSchemaCompare.Internal
                 {
                     logger.NotInDatabase(indexName, CompareAttributes.IndexConstraintName);
                 }
+            }
+        }
+
+        //EF Core creates a UNIQUE constraint for an alternate key, e.g. HasAlternateKey, but a unique index for HasIndex(...).IsUnique()
+        private void CompareAlternateKeys(CompareLog log, ITypeBase entityType, DatabaseTable table)
+        {
+            var constraintDict = table.UniqueConstraints.Where(x => !string.IsNullOrEmpty(x.Name))
+                .ToDictionary(x => x.Name, _caseComparer);
+            //Some providers' scaffolders, e.g. Sqlite's, don't read a unique constraint's name, so a key can't be found by name
+            var hasUnnamedConstraints = table.UniqueConstraints.Any(x => string.IsNullOrEmpty(x.Name));
+            //Keys are declared on the root entity type, so this doesn't compare them again for each derived type
+            foreach (var key in entityType.ContainingEntityType.GetDeclaredKeys().Where(x => !x.IsPrimaryKey()))
+            {
+                var constraintName = key.GetName(GetTableStoreObjectIdentifier(table));
+                if (constraintName == null)
+                    continue; //The key isn't mapped to this table
+                var logger = new CompareLogger2(CompareType.AlternateKey, constraintName, log.SubLogs, _ignoreList, () => _hasErrors = true);
+                if (!constraintDict.TryGetValue(constraintName, out var constraint))
+                {
+                    if (hasUnnamedConstraints)
+                        new CompareLogger2(CompareType.AlternateKey, constraintName, _logs.Last().SubLogs, _ignoreList, () => _hasErrors = true)
+                            .MarkAsNotChecked(null, constraintName, CompareAttributes.ConstraintName);
+                    else
+                        logger.NotInDatabase(constraintName, CompareAttributes.ConstraintName);
+                    continue;
+                }
+                var error = logger.CheckDifferent(
+                    string.Join(",", key.Properties.Select(x => GetColumnNameTakingIntoAccountSchema(x, table))),
+                    string.Join(",", constraint.Columns.Select(x => x.Name)), CompareAttributes.Columns, _caseComparison);
+                if (!error)
+                    logger.MarkAsOk(constraintName);
             }
         }
 
