@@ -53,6 +53,12 @@ _Thanks to GitHub @bgrauer-atacom and @lweberprb for suggesting that this librar
   - Every function, procedure, aggregate and trigger in the database that isn't declared by one of the DbContexts is reported as `EXTRA IN DATABASE`, on all tables, not just mapped ones. Only objects built into PostgreSQL and objects owned by an extension are skipped. A trigger's function (`RETURNS trigger`) can't be declared via `HasDbFunction`, so it is always reported - suppress it with `IgnoreTheseErrors` if you want to keep it.
   - Typical errors: `EXTRA IN DATABASE: Function 'public.touch_widget()'. Found = function returning trigger` and `EXTRA IN DATABASE: Trigger 'public.widget.trg_widget_touch'. Found = CREATE TRIGGER ...`
   - Requires PostgreSQL 13 or later.
+- **Storage parameters (PostgreSQL only):** the storage parameters set via `HasStorageParameter` on an entity or an index, e.g. `fillfactor` or `autovacuum_vacuum_scale_factor`, must match the ones on the table or index in the database. A parameter that EF Core doesn't set must not be set in the database:
+  - A parameter must be set on both sides or neither, even when one side sets it to PostgreSQL's default. For example, a table with `fillfactor=100` in the database is reported as `EXTRA IN DATABASE` if EF Core doesn't set `fillfactor`, and `HasStorageParameter("fillfactor", 100)` is reported as `NOT IN DATABASE` if the table doesn't set it.
+  - Values must be the same text. PostgreSQL holds a value as the text it was set with, so `on` doesn't match `true`, and `0.050` doesn't match `0.05`, even though PostgreSQL reads them the same.
+  - A table's TOAST parameters are compared too, under the names used to set them, e.g. `toast.autovacuum_enabled`.
+  - Only tables mapped by the DbContext and indexes declared in EF Core are checked, e.g. not a primary key's index, as EF Core can't set storage parameters on it.
+  - Typical errors: `DIFFERENT: Table 'widget', storage parameter. Expected = fillfactor=70, found = fillfactor=50`, `EXTRA IN DATABASE: Table 'widget', storage parameter. Found = toast.autovacuum_enabled=false` and `NOT IN DATABASE: Widget->Index 'name', storage parameter. Expected = fillfactor=80`
 
 ### Stage 2 - checks on database
 

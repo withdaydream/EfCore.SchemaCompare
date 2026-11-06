@@ -19,6 +19,12 @@ public interface IConstraintReader
 
     IReadOnlyList<TriggerDefinition> GetTriggers(DbContext dbContext);
 
+    /// <summary>
+    /// The storage parameters, e.g. fillfactor, of every table and index in the database.
+    /// A table or index without any is returned once, with a null ParameterName
+    /// </summary>
+    IReadOnlyList<StorageParameter> GetStorageParameters(DbContext dbContext);
+
     public interface IConstraint
     {
         [Column("constraint_name")]
@@ -136,5 +142,29 @@ public interface IConstraintReader
         {
             return $"{SchemaName ?? defaultSchema}.{TableName}.{TriggerName}";
         }
+    }
+
+    public record StorageParameter
+    {
+        [Column("schema_name")]
+        public required string SchemaName { get; init; }
+
+        [Column("table_name")]
+        public required string TableName { get; init; }
+
+        /// <summary>
+        /// Null for the table's own storage parameters
+        /// </summary>
+        [Column("index_name")]
+        public string IndexName { get; init; }
+
+        /// <summary>
+        /// Null if the table or index has no storage parameters. The parameters of a table's TOAST table start with "toast."
+        /// </summary>
+        [Column("parameter_name")]
+        public string ParameterName { get; init; }
+
+        [Column("parameter_value")]
+        public string ParameterValue { get; init; }
     }
 }

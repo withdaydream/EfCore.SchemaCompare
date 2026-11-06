@@ -42,8 +42,10 @@ namespace EfSchemaCompare
         TableName,
         //keys - primary, foreign, alternative
         PrimaryKey, ConstraintName, IndexConstraintName, Unique, DeleteBehavior,
-        //MarkAsNotChecked 
-        NotMappedToDatabase
+        //MarkAsNotChecked
+        NotMappedToDatabase,
+        //Tables and indexes (PostgreSQL only), e.g. fillfactor
+        StorageParameter
     }
 #pragma warning restore 1591
 

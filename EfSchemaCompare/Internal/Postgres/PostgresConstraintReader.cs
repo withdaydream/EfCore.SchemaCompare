@@ -195,4 +195,59 @@ public class PostgresConstraintReader : IConstraintReader
             """
         ).ToList();
     }
+
+    /// <summary>
+    /// Returns the storage parameters (reloptions) of every table and index in the database, other than in the system schemas.
+    /// A table's TOAST table parameters, which are set as e.g. toast.autovacuum_enabled, are returned with that "toast." prefix.
+    /// </summary>
+    public IReadOnlyList<IConstraintReader.StorageParameter> GetStorageParameters(DbContext dbContext)
+    {
+        return dbContext.Database.SqlQueryRaw<IConstraintReader.StorageParameter>(
+            """
+            SELECT
+                n.nspname AS schema_name,
+                c.relname AS table_name,
+                NULL AS index_name,
+                o.option_name AS parameter_name,
+                o.option_value AS parameter_value
+            FROM
+                pg_class AS c
+            JOIN
+                pg_namespace AS n ON n.oid = c.relnamespace
+            LEFT JOIN
+                pg_class AS toast ON toast.oid = c.reltoastrelid
+            LEFT JOIN LATERAL (
+                SELECT option_name, option_value FROM pg_options_to_table(c.reloptions)
+                UNION ALL
+                SELECT 'toast.' || option_name, option_value FROM pg_options_to_table(toast.reloptions)
+            ) AS o ON true
+            WHERE
+                c.relkind IN ('r', 'p')
+                AND n.nspname !~ '^pg_'
+                AND n.nspname <> 'information_schema'
+            UNION ALL
+            SELECT
+                n.nspname,
+                t.relname,
+                i.relname,
+                o.option_name,
+                o.option_value
+            FROM
+                pg_index AS x
+            JOIN
+                pg_class AS i ON i.oid = x.indexrelid
+            JOIN
+                pg_class AS t ON t.oid = x.indrelid
+            JOIN
+                pg_namespace AS n ON n.oid = t.relnamespace
+            LEFT JOIN LATERAL
+                pg_options_to_table(i.reloptions) AS o ON true
+            WHERE
+                t.relkind IN ('r', 'p')
+                AND n.nspname !~ '^pg_'
+                AND n.nspname <> 'information_schema'
+            ORDER BY schema_name, table_name, index_name NULLS FIRST, parameter_name
+            """
+        ).ToList();
+    }
 }

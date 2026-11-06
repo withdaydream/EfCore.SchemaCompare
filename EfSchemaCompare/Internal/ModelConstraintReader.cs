@@ -32,4 +32,10 @@ internal class ModelConstraintReader : IConstraintReader
     {
         return dbContext.GetService<IDesignTimeModel>().Model.GetTriggers();
     }
+
+    public IReadOnlyList<IConstraintReader.StorageParameter> GetStorageParameters(DbContext dbContext)
+    {
+        //Storage parameters are only compared for PostgreSQL. No tables or indexes means nothing is compared
+        return new List<IConstraintReader.StorageParameter>();
+    }
 }

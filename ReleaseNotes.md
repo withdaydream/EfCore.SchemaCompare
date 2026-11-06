@@ -3,6 +3,7 @@
 ## 10.3.0-daydream
 
 - A declared function that is built into PostgreSQL or comes from an extension, e.g. `jsonb_extract_path_text`, is no longer reported as `NOT IN DATABASE`.
+- New feature (PostgreSQL): compares the storage parameters set via `HasStorageParameter` on entities and indexes, e.g. `fillfactor`, with the database. A parameter EF Core doesn't set must not be set in the database, even to its default, and values must be the same text, e.g. `on` doesn't match `true` - see README.
 
 ## 10.2.0-daydream
 

@@ -34,6 +34,7 @@ namespace EfSchemaCompare.Internal
 
         private string _defaultSchema;
         private Dictionary<string, DatabaseTable> _tableViewDict;
+        private StorageParameterComparer _storageParameterComparer;
         private bool _hasErrors;
 
         private readonly List<CompareLog> _logs;
@@ -79,6 +80,7 @@ namespace EfSchemaCompare.Internal
             CheckDatabaseOk(DbContextLog, _model, databaseModel);
 
             _tableViewDict = databaseModel.Tables.ToDictionary(x => x.FormSchemaTableFromDatabase(_defaultSchema), _caseComparer);
+            _storageParameterComparer = new StorageParameterComparer(_constraintReader.GetStorageParameters(_dbContext));
             var entitiesNotMappedToTableOrView = _model.GetEntityTypes().
                 Where(x => x.FormSchemaTableFromModel() == null).ToList();
             if (entitiesNotMappedToTableOrView.Any())
@@ -128,6 +130,8 @@ namespace EfSchemaCompare.Internal
                 }
             }
 
+            CompareTableStorageParameters();
+
             var dbCheckConstraints = _constraintReader.GetCheckConstraints(_dbContext);
             var modelCheckConstraints = _designTimeModel.GetCheckConstraints();
 
@@ -141,11 +145,26 @@ namespace EfSchemaCompare.Internal
             return _hasErrors;
         }
 
-        //Not implemented 
+        //Not implemented
         private void CheckDatabaseOk(CompareLog log, IModel modelRel, DatabaseModel databaseModel)
         {
             //Check sequences
             //var logger = new CompareLogger2(CompareType.Sequence, <sequence name>, _logs);
+        }
+
+        //This is done per table, not per entity, as with TPH and table splitting many entities map to one table
+        private void CompareTableStorageParameters()
+        {
+            //Storage parameters are design-time annotations, so they aren't in the runtime model
+            foreach (var table in _designTimeModel.GetRelationalModel().Tables)
+            {
+                var schemaTable = table.Schema.FormSchemaTable(table.Name);
+                if (!_tableViewDict.TryGetValue(schemaTable, out var databaseTable))
+                    continue; //A missing table is reported by the entity that maps to it
+                var logger = new CompareLogger2(CompareType.Table, schemaTable, DbContextLog.SubLogs, _ignoreList, () => _hasErrors = true);
+                _storageParameterComparer.CompareTable(logger, databaseTable.Schema, databaseTable.Name,
+                    table.EntityTypeMappings.SelectMany(x => x.TypeBase.GetAnnotations()));
+            }
         }
 
         private void CompareForeignKeys(CompareLog log, ITypeBase entityType, DatabaseTable table)
@@ -240,6 +259,9 @@ namespace EfSchemaCompare.Internal
                     }
                     error |= logger.CheckDifferent(entityIdx.IsUnique.ToString(),
                         indexDict[indexName].IsUnique.ToString(), CompareAttributes.Unique, _caseComparison);
+                    //A storage parameter difference doesn't stop the index being marked OK, as otherwise stage 2 would say it isn't used
+                    _storageParameterComparer.CompareIndex(logger, table.Schema, table.Name, indexName,
+                        FindDesignTimeIndex(entityIdx)?.GetAnnotations() ?? []);
                     if (!error)
                         logger.MarkAsOk(indexName);
                 }
@@ -248,6 +270,14 @@ namespace EfSchemaCompare.Internal
                     logger.NotInDatabase(indexName, CompareAttributes.IndexConstraintName);
                 }
             }
+        }
+
+        //Storage parameters are design-time annotations, so they aren't on the runtime model's index
+        private IIndex FindDesignTimeIndex(IIndex index)
+        {
+            return _designTimeModel.FindEntityType(index.DeclaringEntityType.Name)?.GetDeclaredIndexes()
+                .FirstOrDefault(x => x.Name == index.Name
+                                     && x.Properties.Select(p => p.Name).SequenceEqual(index.Properties.Select(p => p.Name)));
         }
 
         private void CompareColumns(CompareLog log, ITypeBase typeBase, DatabaseTable table)
