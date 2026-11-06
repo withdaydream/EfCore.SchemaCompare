@@ -25,6 +25,7 @@ namespace EfSchemaCompare
         private readonly CompareEfSqlConfig _config;
 
         private readonly List<CompareLog> _logs = new List<CompareLog>();
+        private readonly List<CompareLog> _warnings = new List<CompareLog>();
 
         /// <summary>
         /// This creates the comparer class that you use for comparing EF Core DbContexts to a database
@@ -47,6 +48,20 @@ namespace EfSchemaCompare
         /// Look at the CompareLog class for various static methods that will output the log in a human-readable format
         /// </summary>
         public IReadOnlyList<CompareLog> Logs => _logs.ToImmutableList();
+
+        /// <summary>
+        /// Things found that aren't errors, so they don't make CompareEfWithDb return true.
+        /// These are the tables and views in the database that no DbContext maps to, e.g. "EXTRA IN DATABASE: Table 'audit_log'".
+        /// They are found in stage 2, so they are only looked for if stage 1 found no errors, or <see cref="CompareEfSqlConfig.AlwaysRunStage2"/> is true.
+        /// You can ignore them in the same ways as errors, or leave tables out with <see cref="CompareEfSqlConfig.TablesToIgnoreCommaDelimited"/>
+        /// </summary>
+        public IReadOnlyList<CompareLog> Warnings => _warnings.ToImmutableList();
+
+        /// <summary>
+        /// This returns a single string containing all the warnings found, see <see cref="Warnings"/>.
+        /// Each warning is on a separate line
+        /// </summary>
+        public string GetAllWarnings => string.Join(Environment.NewLine, CompareLog.ListAllErrors(Warnings));
 
         /// <summary>
         /// This will compare one or more DbContext against database pointed to the first DbContext.
@@ -113,6 +128,7 @@ namespace EfSchemaCompare
             var stage2Comparer = new Stage2Comparer(databaseModel, _config);
             hasErrors = stage2Comparer.CompareLogsToDatabase(_logs);
             _logs.AddRange(stage2Comparer.Logs);
+            _warnings.AddRange(stage2Comparer.Warnings);
             return hasErrors;
         }
 
@@ -122,23 +138,15 @@ namespace EfSchemaCompare
 
             var databaseModel = databaseFactory.Create(connectionString,
                 new DatabaseModelFactoryOptions(new string[] { }, new string[] { }));
-            RemoveAnyTableToIgnore(databaseModel, contexts);
+            RemoveAnyTableToIgnore(databaseModel);
             return databaseModel;
         }
 
-        private void RemoveAnyTableToIgnore(DatabaseModel databaseModel, DbContext[] contexts)
+        //Tables that no DbContext maps to are kept, so stage 2 reports them as warnings, unless they are listed in TablesToIgnoreCommaDelimited
+        private void RemoveAnyTableToIgnore(DatabaseModel databaseModel)
         {
             var tablesToRemove = new List<DatabaseTable>();
-            if (_config.TablesToIgnoreCommaDelimited == null)
-            {
-                //We remove all tables not mapped by the contexts
-                var tablesInContext = contexts.SelectMany(x => x.Model.GetEntityTypes())
-                    .Select(x => x.FormSchemaTableFromModel()).ToList();
-
-                tablesToRemove = databaseModel.Tables
-                    .Where(x => !tablesInContext.Contains(x.FormSchemaTableFromDatabase(databaseModel.DefaultSchema), StringComparer.InvariantCultureIgnoreCase)).ToList();
-            }
-            else
+            if (!string.IsNullOrEmpty(_config.TablesToIgnoreCommaDelimited))
             {
                 foreach (var tableToIgnore in _config.TablesToIgnoreCommaDelimited.Split(',')
                     .Select(x => x.Trim()).Where(x => !string.IsNullOrEmpty(x)))

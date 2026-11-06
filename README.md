@@ -69,7 +69,7 @@ _Thanks to GitHub @bgrauer-atacom and @lweberprb for suggesting that this librar
 
 ### Stage 2 - checks on database
 
-- Unused tables or views
+- Unused tables or views, which are reported as warnings, not errors - see [Warnings](#warnings)
 - Unused columns
 - Unused Indexes
 - Unused unique constraints, i.e. ones no alternate key creates, e.g. `EXTRA IN DATABASE: AlternateKey 'widget', constraint name. Found = uq_widget_name`
@@ -197,6 +197,16 @@ This says that there is a column called `MyEntityId` in the table `MyEntites` th
 
 *NOTE: When errors contain the word `Table` it can be a SQL Table or View.*
 
+### Warnings
+
+A table or view in the database that no DbContext maps to is reported as a warning, not an error, as a database often has tables EF Core doesn't use. Warnings don't make `CompareEfWithDb` return true. The `comparer.GetAllWarnings` property returns them in the same format as errors, e.g.
+
+```text
+EXTRA IN DATABASE: Table 'audit_log'
+```
+
+Warnings come from stage 2, so they are only looked for if stage 1 found no errors, or `AlwaysRunStage2` is true.
+
 ## How to suppress certain error messages
 
 In a few cases you will get errors that aren't correct (see limitations) or not relevant. In these cases you might want to suppress those errors. There are two way to do this, with the first being the easiest. Both use the `CompareEfSqlConfig` class.
@@ -270,13 +280,11 @@ You have already seen the class called `CompareEfSqlConfig` for suppressing erro
 
 You have already seen the class called `CompareEfSqlConfig` for suppressing errors. There is one other configuration property called `TablesToIgnoreCommaDelimited`, which allows you to control what table/views in the database are considered. 
 
-By default (i.e. when `TablesToIgnoreCommaDelimited` is null) then `CompareEfSql` will only look at the tables/views in the database that your EF Core entity classes are mapped to. This provides an simple starting point. The other options are:
+By default (i.e. when `TablesToIgnoreCommaDelimited` is null or "") `CompareEfSql` checks all the tables/views in the database. Ones that your EF Core entity classes aren't mapped to are reported as warnings (see [Warnings](#warnings)), which don't make `CompareEfWithDb` return true. The other option is:
 
-- Set `TablesToIgnoreCommaDelimited` to "" (i.e. empty string)  
-This will check all the tables/Views in the database.
-- Set `TablesToIgnoreCommaDelimited` to a list of tables to ignore.  
-If there are tables/views in your database that EF Core doesn't access then you need to tell `CompareEfSql`
-about them, otherwise it will output a message saying there are extra tables you are not accessing from EF Core.
+- Set `TablesToIgnoreCommaDelimited` to a list of tables to leave out.  
+If there are tables/views in your database that EF Core doesn't access, and you don't want a warning for them, you can tell `CompareEfSql`
+to leave them out. You can also hide a warning with `IgnoreTheseErrors`, like an error.
 You do this by providing a comma delimited list of table names, with an optional schema name if needed.
 Here are two examples of a table name
   - `MyTable` - this has no schema, so the default schema of the database will be used

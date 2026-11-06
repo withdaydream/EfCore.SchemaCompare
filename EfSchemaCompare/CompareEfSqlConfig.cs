@@ -17,18 +17,15 @@ namespace EfSchemaCompare
 
         /// <summary>
         /// By default, Stage 2 only runs if: either there were no errors in Stage 1, or if you
-        /// have suppressed all the errors in the first stage. But Stage 2 can be forced to run by either:
-        /// 1. Set <see cref="AlwaysRunStage2"/> to true
-        /// 2. Set <see cref="TablesToIgnoreCommaDelimited"/>  to "", which says you want to check all tables
-        /// in the database against your DbContext(s).
+        /// have suppressed all the errors in the first stage. Set this to true to always run Stage 2.
         /// </summary>
         public bool AlwaysRunStage2 { get; set; } = false;
 
         /// <summary>
-        /// This allows you to ignore tables that your EF Core context doesn't use. There are three settings
-        /// 1. null - this will only check the tables that the DbContexts are mapped to. This is the default.
-        /// 2. "" - This will check all tables in the database against the entity classes in the DbContexts.
-        /// 3. A comma-delimited list of tables, with optional schema, to ignore. 
+        /// Every table and view in the database is checked. Ones that no DbContext maps to are reported as warnings,
+        /// see <see cref="CompareEfSql.Warnings"/>, not errors. This leaves tables out of the comparison altogether:
+        /// 1. null or "" - no tables are left out. This is the default.
+        /// 2. A comma-delimited list of tables, with optional schema, to leave out.
         ///    Typical format: "MyTable,MyOtherTable,MySchema.MyTableWithSchema"
         ///    (note: the schema/table match is case-insensitive)
         /// </summary>

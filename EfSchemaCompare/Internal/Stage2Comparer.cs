@@ -16,6 +16,7 @@ namespace EfSchemaCompare.Internal
         private readonly IReadOnlyList<CompareLog> _ignoreList;
 
         private readonly List<CompareLog> _logs = new List<CompareLog>();
+        private readonly List<CompareLog> _warnings = new List<CompareLog>();
 
         private bool _hasErrors;
 
@@ -28,11 +29,16 @@ namespace EfSchemaCompare.Internal
 
         public IReadOnlyList<CompareLog> Logs => _logs.ToImmutableList();
 
+        /// <summary>
+        /// Things found that aren't errors, i.e. they don't make <see cref="CompareLogsToDatabase"/> return true
+        /// </summary>
+        public IReadOnlyList<CompareLog> Warnings => _warnings.ToImmutableList();
+
         public bool CompareLogsToDatabase(IReadOnlyList<CompareLog> firstStageLogs)
         {
             var logger = new CompareLogger2(CompareType.Database, _databaseModel.DatabaseName, _logs, _ignoreList, () => _hasErrors = true);
             logger.MarkAsOk(null);
-            LookForUnusedTables(firstStageLogs, _logs.Last());
+            LookForUnusedTables(firstStageLogs);
             LookForUnusedColumns(firstStageLogs, _logs.Last());
             LookForUnusedIndexes(firstStageLogs, _logs.Last());
             LookForUnusedUniqueConstraints(firstStageLogs);
@@ -40,9 +46,10 @@ namespace EfSchemaCompare.Internal
             return _hasErrors;
         }
 
-        private void LookForUnusedTables(IReadOnlyList<CompareLog> firstStageLogs, CompareLog log)
+        //A table or view that no DbContext maps to is a warning, not an error, as a database often has tables EF Core doesn't use
+        private void LookForUnusedTables(IReadOnlyList<CompareLog> firstStageLogs)
         {
-            var logger = new CompareLogger2(CompareType.Table, null, log.SubLogs, _ignoreList, () => _hasErrors = true);
+            var logger = new CompareLogger2(CompareType.Table, null, _warnings, _ignoreList, () => { });
             var databaseTableNames = _databaseModel.Tables.Select(x => x.FormSchemaTableFromDatabase(_databaseModel.DefaultSchema));
             var allEntityTableNames = firstStageLogs.SelectMany(p => p.SubLogs)
                 .Where(x => x.State == CompareState.Ok && x.Type == CompareType.Entity)

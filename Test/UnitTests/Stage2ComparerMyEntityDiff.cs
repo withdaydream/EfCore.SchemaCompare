@@ -73,8 +73,10 @@ namespace Test.UnitTests
             var hasErrors = handler.CompareLogsToDatabase(firstStageLogs);
 
             //VERIFY
-            hasErrors.ShouldBeTrue();
-            CompareLog.ListAllErrors(handler.Logs).Single().ShouldEqual(
+            //A table no DbContext maps to is a warning, not an error
+            hasErrors.ShouldBeFalse();
+            CompareLog.ListAllErrors(handler.Logs).ShouldBeEmpty();
+            CompareLog.ListAllErrors(handler.Warnings).Single().ShouldEqual(
                 "EXTRA IN DATABASE: Table 'MyEntites'");
         }
 
