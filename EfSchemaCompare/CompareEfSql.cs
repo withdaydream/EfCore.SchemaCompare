@@ -65,9 +65,15 @@ namespace EfSchemaCompare
 
         /// <summary>
         /// This will compare one or more DbContext against database pointed to the first DbContext.
+        /// <para>It returns false, i.e. success, only if nothing differs: no error of any kind was found, so
+        /// <see cref="GetAllErrors"/> is empty. Anything that is DIFFERENT, NOT IN DATABASE, EXTRA IN DATABASE or
+        /// NOT CHECKED makes it return true. This is the same whatever the settings, e.g.
+        /// <see cref="CompareEfSqlConfig.AlwaysRunStage2"/>.</para>
+        /// <para>Errors you have ignored, e.g. via <see cref="CompareEfSqlConfig.IgnoreTheseErrors"/>, don't count, and nor do
+        /// <see cref="Warnings"/>, i.e. tables and views that no DbContext maps to.</para>
         /// </summary>
         /// <param name="dbContexts">One or more dbContext instances to be compared with the database</param>
-        /// <returns>true if any errors found, otherwise false</returns>
+        /// <returns>true if any errors were found, false only if nothing differs</returns>
         public bool CompareEfWithDb(params DbContext[] dbContexts)
         {
             if (dbContexts == null) throw new ArgumentNullException(nameof(dbContexts));
@@ -78,12 +84,18 @@ namespace EfSchemaCompare
 
         /// <summary>
         /// This will compare one or more DbContext against database pointed to by the connectionString.
+        /// <para>It returns false, i.e. success, only if nothing differs: no error of any kind was found, so
+        /// <see cref="GetAllErrors"/> is empty. Anything that is DIFFERENT, NOT IN DATABASE, EXTRA IN DATABASE or
+        /// NOT CHECKED makes it return true. This is the same whatever the settings, e.g.
+        /// <see cref="CompareEfSqlConfig.AlwaysRunStage2"/>.</para>
+        /// <para>Errors you have ignored, e.g. via <see cref="CompareEfSqlConfig.IgnoreTheseErrors"/>, don't count, and nor do
+        /// <see cref="Warnings"/>, i.e. tables and views that no DbContext maps to.</para>
         /// </summary>
-        /// <param name="configOrConnectionString">This should either be a 
+        /// <param name="configOrConnectionString">This should either be a
         /// connection string or the name of a connection string in the appsetting.json file.
         /// </param>
         /// <param name="dbContexts">One or more dbContext instances to be compared with the database</param>
-        /// <returns>true if any errors found, otherwise false</returns>
+        /// <returns>true if any errors were found, false only if nothing differs</returns>
         public bool CompareEfWithDb(string configOrConnectionString, params DbContext[] dbContexts )
         {
             if (dbContexts == null) throw new ArgumentNullException(nameof(dbContexts));
@@ -126,10 +138,12 @@ namespace EfSchemaCompare
 
             //No errors, so its worth running the second phase
             var stage2Comparer = new Stage2Comparer(databaseModel, _config);
-            hasErrors = stage2Comparer.CompareLogsToDatabase(_logs);
+            //Stage 2's errors are added to stage 1's, so they don't hide them
+            hasErrors |= stage2Comparer.CompareLogsToDatabase(_logs);
             _logs.AddRange(stage2Comparer.Logs);
             _warnings.AddRange(stage2Comparer.Warnings);
-            return hasErrors;
+            //Every error that isn't ignored is in the logs, so this is only false if GetAllErrors is empty
+            return hasErrors || CompareLog.ListAllErrors(_logs).Any();
         }
 
         private  DatabaseModel GetDatabaseModelViaScaffolder(DbContext[] contexts, string connectionString)

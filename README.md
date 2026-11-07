@@ -139,7 +139,7 @@ public void CompareViaContext()
         var hasErrors = comparer.CompareEfWithDb(context); 
 
         //VERIFY
-        //The CompareEfWithDb method returns true if there were errors. 
+        //The CompareEfWithDb method returns true if there were errors, and false only if nothing differs.
         //The comparer.GetAllErrors property returns a string, with each error on a separate line
         hasErrors.ShouldBeFalse(comparer.GetAllErrors);
     }
@@ -312,3 +312,5 @@ var comparer = new CompareEfSql(config);
 Getting all the errors in one go can be useful, for instance when you are creating a EF Core DbContext to match a given database. But by default, Stage 2 isn't run if Stage 1 found errors that haven't been register in `config.IgnoreTheseErrors(... your error strings ...)`. 
 
 In version 8.2.0 a new boolean property called `AlwaysRunStage2` in `CompareEfSqlConfig` and if you you set this to `true` then Stage 2 will always run, even if there are non-ignored errors. See [issue #38](https://github.com/JonPSmith/EfCore.SchemaCompare/issues/38) which made me add this new feature.
+
+Either way, `CompareEfWithDb` returns false only if nothing differs, i.e. `GetAllErrors` is empty. An error found by either stage makes it return true.
