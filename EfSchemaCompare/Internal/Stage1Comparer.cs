@@ -37,6 +37,7 @@ namespace EfSchemaCompare.Internal
         private string _defaultSchema;
         private Dictionary<string, DatabaseTable> _tableViewDict;
         private StorageParameterComparer _storageParameterComparer;
+        private TableSettingsComparer _tableSettingsComparer;
         private bool _hasErrors;
 
         private readonly List<CompareLog> _logs;
@@ -90,6 +91,8 @@ namespace EfSchemaCompare.Internal
 
             _tableViewDict = databaseModel.Tables.ToDictionary(x => x.FormSchemaTableFromDatabase(_defaultSchema), _caseComparer);
             _storageParameterComparer = new StorageParameterComparer(_constraintReader.GetStorageParameters(_dbContext));
+            _tableSettingsComparer = new TableSettingsComparer(_constraintReader.GetIndexDetails(_dbContext),
+                _constraintReader.GetSettingsEfCoreCantSet(_dbContext));
             var entitiesNotMappedToTableOrView = _model.GetEntityTypes().
                 Where(x => x.FormSchemaTableFromModel() == null).ToList();
             if (entitiesNotMappedToTableOrView.Any())
@@ -163,7 +166,7 @@ namespace EfSchemaCompare.Internal
             //var logger = new CompareLogger2(CompareType.Sequence, <sequence name>, _logs);
         }
 
-        //This compares the table's comment and storage parameters.
+        //This compares the table's comment and storage parameters, and reports its settings that EF Core can't set.
         //It is done per table, not per entity, as with TPH and table splitting many entities map to one table
         private void CompareTables()
         {
@@ -177,6 +180,10 @@ namespace EfSchemaCompare.Internal
                 logger.CheckDifferent(table.Comment, databaseTable.Comment, CompareAttributes.Comment, _caseComparison);
                 _storageParameterComparer.CompareTable(logger, databaseTable.Schema, databaseTable.Name,
                     table.EntityTypeMappings.SelectMany(x => x.TypeBase.GetAnnotations()));
+                //An extra index is logged like the ones stage 2 finds, i.e. under the table's name
+                var indexLogger = new CompareLogger2(CompareType.Index, schemaTable, DbContextLog.SubLogs, _ignoreList, () => _hasErrors = true);
+                _tableSettingsComparer.ReportSettingsEfCoreCantSet(logger, indexLogger, databaseTable.Schema, databaseTable.Name,
+                    table.Indexes.Select(x => x.Name).ToHashSet(StringComparer.Ordinal));
             }
         }
 
@@ -293,9 +300,13 @@ namespace EfSchemaCompare.Internal
                     var designTimeIndex = FindDesignTimeIndex(entityIdx);
                     error |= logger.CheckDifferent(DatabaseIndexData.FormatCollations(designTimeIndex?[RelationalAnnotationNames.Collation]),
                         indexDict[indexName].Collations, CompareAttributes.Collation, _caseComparison);
-                    //A storage parameter difference doesn't stop the index being marked OK, as otherwise stage 2 would say it isn't used
+                    //A storage parameter, INCLUDE or NULLS DISTINCT difference doesn't stop the index being marked OK,
+                    //as otherwise stage 2 would say it isn't used
                     _storageParameterComparer.CompareIndex(logger, table.Schema, table.Name, indexName,
                         designTimeIndex?.GetAnnotations() ?? []);
+                    _tableSettingsComparer.CompareIndex(logger, table.Schema, table.Name, indexName,
+                        GetIncludeColumns(entityIdx, designTimeIndex, table), entityIdx.IsUnique,
+                        designTimeIndex?[TableSettingsComparer.NullsDistinctAnnotation] as bool?);
                     if (!error)
                         logger.MarkAsOk(indexName);
                 }
@@ -335,6 +346,16 @@ namespace EfSchemaCompare.Internal
                 if (!error)
                     logger.MarkAsOk(constraintName);
             }
+        }
+
+        //IncludeProperties holds the names of the properties, so they are turned into the names of their columns
+        private List<string> GetIncludeColumns(IIndex index, IIndex designTimeIndex, DatabaseTable table)
+        {
+            return (designTimeIndex?[TableSettingsComparer.IncludeAnnotation] as IEnumerable<string>)?
+                .Select(name => index.DeclaringEntityType.FindProperty(name) is { } property
+                    ? GetColumnNameTakingIntoAccountSchema(property, table) ?? name
+                    : name)
+                .ToList();
         }
 
         //Collations and storage parameters are design-time annotations, so they aren't on the runtime model's index

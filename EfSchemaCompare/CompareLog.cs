@@ -55,7 +55,11 @@ namespace EfSchemaCompare
         //Columns (PostgreSQL only)
         Compression, ValueGenerationStrategy, IdentityOptions,
         //The ordered list of the columns a foreign key references
-        PrincipalColumns
+        PrincipalColumns,
+        //Indexes (PostgreSQL only): the ordered list of the columns in an INCLUDE clause, and NULLS [NOT] DISTINCT
+        IncludeColumns, NullsDistinct,
+        //Tables and constraints (PostgreSQL only) that have settings EF Core can't set
+        RowLevelSecurity, Policy, Rule, Deferrable, NotValid
     }
 #pragma warning restore 1591
 

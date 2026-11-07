@@ -38,4 +38,16 @@ internal class ModelConstraintReader : IConstraintReader
         //Storage parameters are only compared for PostgreSQL. No tables or indexes means nothing is compared
         return new List<IConstraintReader.StorageParameter>();
     }
+
+    public IReadOnlyList<IConstraintReader.IndexDetail> GetIndexDetails(DbContext dbContext)
+    {
+        //Index details are only compared for PostgreSQL. No indexes means nothing is compared
+        return new List<IConstraintReader.IndexDetail>();
+    }
+
+    public IReadOnlyList<IConstraintReader.SettingEfCoreCantSet> GetSettingsEfCoreCantSet(DbContext dbContext)
+    {
+        //These are only looked for in PostgreSQL
+        return new List<IConstraintReader.SettingEfCoreCantSet>();
+    }
 }

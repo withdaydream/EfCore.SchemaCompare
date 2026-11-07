@@ -23,6 +23,9 @@
 - NOTE: These checks may report differences that were hidden before, e.g. a default whose SQL can't be parsed and differs from the database's only in spaces. Fix the database or EF Core configuration, or add an ignore line for each one.
 - Fixed (PostgreSQL): a check constraint's, a default's and a computed column's SQL ignored the case of quoted names, so e.g. `"Price" > 0` matched `price > 0`, though they use different columns. Like PostgreSQL, only names that aren't quoted are lower-cased now, and only their letters A to Z. A quoted keyword, e.g. `"null"`, is now read as a name.
 - Fixed: with `AlwaysRunStage2` set, `CompareEfWithDb` returned false if stage 2 found no errors, even when stage 1 had found some. It now returns false only if nothing differs, i.e. `GetAllErrors` is empty, whatever the settings.
+- New feature (PostgreSQL): compares an index's `INCLUDE` columns (`IncludeProperties`), in order, and a unique index's `NULLS NOT DISTINCT` (`AreNullsDistinct`). An index EF Core doesn't give `INCLUDE` columns must not have any in the database. EF Core not setting `AreNullsDistinct` is compared as `NULLS DISTINCT`, as PostgreSQL stores it either way - see README.
+- New feature (PostgreSQL): settings EF Core can't set are reported as `EXTRA IN DATABASE` on the tables a DbContext maps, as EF Core never creates them: an index on an expression, row-level security being enabled or forced and its policies, rules, `DEFERRABLE` primary keys, `UNIQUE` constraints and foreign keys, `NOT VALID` foreign keys, and `INCLUDE` columns or `NULLS NOT DISTINCT` on a primary key or `UNIQUE` constraint - see README.
+- NOTE: If your database has any of these you will see new errors. Fix the database or EF Core configuration, or add an ignore line for each one.
 
 ## 10.2.0-daydream
 

@@ -255,4 +255,87 @@ public class PostgresConstraintReader : IConstraintReader
             """
         ).ToList();
     }
+
+    /// <summary>
+    /// Returns every index on every table in the database, other than in the system schemas, including the ones that back a
+    /// primary key or a UNIQUE or exclusion constraint. An index's INCLUDE columns are the ones after its key columns
+    /// (indnkeyatts). NULLS NOT DISTINCT was added in PostgreSQL 15, so before that indnullsnotdistinct doesn't exist and
+    /// is read as false.
+    /// </summary>
+    public IReadOnlyList<IConstraintReader.IndexDetail> GetIndexDetails(DbContext dbContext)
+    {
+        return dbContext.Database.SqlQueryRaw<IConstraintReader.IndexDetail>(
+            """
+            SELECT
+                n.nspname AS schema_name,
+                t.relname AS table_name,
+                i.relname AS index_name,
+                con.contype::text AS constraint_type,
+                x.indexprs IS NOT NULL AS is_expression,
+                COALESCE((to_jsonb(x) ->> 'indnullsnotdistinct')::boolean, false) AS nulls_not_distinct,
+                (SELECT string_agg(a.attname::text, ',' ORDER BY k.ord)
+                 FROM unnest(x.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
+                 JOIN pg_attribute AS a ON a.attrelid = x.indrelid AND a.attnum = k.attnum
+                 WHERE k.ord > x.indnkeyatts) AS include_columns
+            FROM
+                pg_index AS x
+            JOIN
+                pg_class AS i ON i.oid = x.indexrelid
+            JOIN
+                pg_class AS t ON t.oid = x.indrelid
+            JOIN
+                pg_namespace AS n ON n.oid = t.relnamespace
+            LEFT JOIN
+                pg_constraint AS con ON con.conindid = x.indexrelid AND con.contype IN ('p', 'u', 'x')
+            WHERE
+                t.relkind IN ('r', 'p')
+                AND n.nspname !~ '^pg_'
+                AND n.nspname <> 'information_schema'
+            ORDER BY schema_name, table_name, index_name
+            """
+        ).ToList();
+    }
+
+    /// <summary>
+    /// Returns the settings that EF Core can't set of every table in the database, other than in the system schemas:
+    /// row-level security being enabled or forced, its policies, rules (other than the _RETURN rule a view is made of),
+    /// DEFERRABLE primary keys, UNIQUE constraints and foreign keys, and foreign keys that are NOT VALID.
+    /// A check constraint's NOT VALID is part of its clause, so it is compared with the check constraint.
+    /// </summary>
+    public IReadOnlyList<IConstraintReader.SettingEfCoreCantSet> GetSettingsEfCoreCantSet(DbContext dbContext)
+    {
+        return dbContext.Database.SqlQueryRaw<IConstraintReader.SettingEfCoreCantSet>(
+            """
+            SELECT
+                n.nspname AS schema_name,
+                c.relname AS table_name,
+                s.setting,
+                s.value
+            FROM
+                pg_class AS c
+            JOIN
+                pg_namespace AS n ON n.oid = c.relnamespace
+            CROSS JOIN LATERAL (
+                SELECT 'RowLevelSecurity' AS setting, 'ENABLE ROW LEVEL SECURITY' AS value WHERE c.relrowsecurity
+                UNION ALL
+                SELECT 'RowLevelSecurity', 'FORCE ROW LEVEL SECURITY' WHERE c.relforcerowsecurity
+                UNION ALL
+                SELECT 'Policy', p.polname::text FROM pg_policy AS p WHERE p.polrelid = c.oid
+                UNION ALL
+                SELECT 'Rule', r.rulename::text FROM pg_rewrite AS r WHERE r.ev_class = c.oid AND r.rulename <> '_RETURN'
+                UNION ALL
+                SELECT 'Deferrable', con.conname || CASE WHEN con.condeferred THEN ' DEFERRABLE INITIALLY DEFERRED' ELSE ' DEFERRABLE' END
+                FROM pg_constraint AS con WHERE con.conrelid = c.oid AND con.condeferrable AND con.contype IN ('p', 'u', 'f')
+                UNION ALL
+                SELECT 'NotValid', con.conname || ' NOT VALID'
+                FROM pg_constraint AS con WHERE con.conrelid = c.oid AND NOT con.convalidated AND con.contype = 'f'
+            ) AS s
+            WHERE
+                c.relkind IN ('r', 'p')
+                AND n.nspname !~ '^pg_'
+                AND n.nspname <> 'information_schema'
+            ORDER BY schema_name, table_name, s.setting, s.value
+            """
+        ).ToList();
+    }
 }

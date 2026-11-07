@@ -25,6 +25,18 @@ public interface IConstraintReader
     /// </summary>
     IReadOnlyList<StorageParameter> GetStorageParameters(DbContext dbContext);
 
+    /// <summary>
+    /// Every index on every table in the database, including the ones that back a primary key or UNIQUE constraint,
+    /// and ones on expressions, which the scaffolder leaves out
+    /// </summary>
+    IReadOnlyList<IndexDetail> GetIndexDetails(DbContext dbContext);
+
+    /// <summary>
+    /// The settings of every table in the database, and of its constraints, that EF Core can't set, e.g. a row-level
+    /// security policy. EF Core never creates these, so each one is extra in the database
+    /// </summary>
+    IReadOnlyList<SettingEfCoreCantSet> GetSettingsEfCoreCantSet(DbContext dbContext);
+
     public interface IConstraint
     {
         [Column("constraint_name")]
@@ -166,5 +178,62 @@ public interface IConstraintReader
 
         [Column("parameter_value")]
         public string ParameterValue { get; init; }
+    }
+
+    public record IndexDetail
+    {
+        [Column("schema_name")]
+        public required string SchemaName { get; init; }
+
+        [Column("table_name")]
+        public required string TableName { get; init; }
+
+        [Column("index_name")]
+        public required string IndexName { get; init; }
+
+        /// <summary>
+        /// "p" if the index backs a primary key, "u" a UNIQUE constraint, "x" an exclusion constraint, otherwise null
+        /// </summary>
+        [Column("constraint_type")]
+        public string ConstraintType { get; init; }
+
+        /// <summary>
+        /// True if any of the index's columns is an expression, e.g. lower(name)
+        /// </summary>
+        [Column("is_expression")]
+        public required bool IsExpression { get; init; }
+
+        /// <summary>
+        /// True for a unique index created with NULLS NOT DISTINCT, so two nulls are duplicates
+        /// </summary>
+        [Column("nulls_not_distinct")]
+        public required bool NullsNotDistinct { get; init; }
+
+        /// <summary>
+        /// The columns of the index's INCLUDE clause in order, e.g. "a,b". Null if it doesn't have one
+        /// </summary>
+        [Column("include_columns")]
+        public string IncludeColumns { get; init; }
+    }
+
+    public record SettingEfCoreCantSet
+    {
+        [Column("schema_name")]
+        public required string SchemaName { get; init; }
+
+        [Column("table_name")]
+        public required string TableName { get; init; }
+
+        /// <summary>
+        /// The name of the <see cref="CompareAttributes"/> it is reported with, e.g. "Policy"
+        /// </summary>
+        [Column("setting")]
+        public required string Setting { get; init; }
+
+        /// <summary>
+        /// What is set, e.g. the policy's name, or "fk_order_customer DEFERRABLE"
+        /// </summary>
+        [Column("value")]
+        public required string Value { get; init; }
     }
 }
