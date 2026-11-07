@@ -54,7 +54,9 @@ namespace EfSchemaCompare.Internal
             var allEntityTableNames = firstStageLogs.SelectMany(p => p.SubLogs)
                 .Where(x => x.State == CompareState.Ok && x.Type == CompareType.Entity)
                 .Select(p => p.Expected).OrderBy(p => p).Distinct().ToList();
-            var tablesNotUsed = databaseTableNames.Where(p => !allEntityTableNames.Contains(p, _caseComparer));
+            //Sorted, as the scaffolder doesn't return the tables in a fixed order
+            var tablesNotUsed = databaseTableNames.Where(p => !allEntityTableNames.Contains(p, _caseComparer))
+                .OrderBy(p => p, StringComparer.Ordinal);
 
             foreach (var tableName in tablesNotUsed)
             {
