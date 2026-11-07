@@ -93,7 +93,7 @@ internal static class PostgresCheckExpressionTokenizer
                     }
 
                     _position++;
-                    _tokens.Add(new PostgresCheckToken(PostgresCheckTokenKind.Identifier, value, start));
+                    _tokens.Add(new PostgresCheckToken(PostgresCheckTokenKind.QuotedIdentifier, value, start));
                     return;
                 }
 
@@ -140,8 +140,22 @@ internal static class PostgresCheckExpressionTokenizer
             while (!IsAtEnd && IsIdentifierPart(Current))
                 _position++;
 
-            var value = _sql[start.._position];
+            var value = LowerCaseUnquotedName(_sql[start.._position]);
             _tokens.Add(new PostgresCheckToken(PostgresCheckTokenKind.Identifier, value, start));
+        }
+
+        //PostgreSQL lower-cases a name that isn't quoted, e.g. Price is the column price, while "Price" is a different
+        //column. In a UTF8 database it only lower-cases the letters A to Z
+        private static string LowerCaseUnquotedName(string name)
+        {
+            var chars = name.ToCharArray();
+            for (var i = 0; i < chars.Length; i++)
+            {
+                if (chars[i] is >= 'A' and <= 'Z')
+                    chars[i] = (char)(chars[i] + ('a' - 'A'));
+            }
+
+            return new string(chars);
         }
 
         private void ReadNumber()
@@ -231,16 +245,20 @@ internal static class PostgresCheckExpressionTokenizer
 
 internal readonly record struct PostgresCheckToken(PostgresCheckTokenKind Kind, string Text, int Position)
 {
+    //A quoted name is never a keyword, e.g. "null" is a column. An unquoted name is already lower-case
     public bool IsKeyword(string keyword)
     {
         return Kind == PostgresCheckTokenKind.Identifier
-               && string.Equals(Text, keyword, StringComparison.OrdinalIgnoreCase);
+               && string.Equals(Text, keyword, StringComparison.Ordinal);
     }
+
+    public bool IsName => Kind is PostgresCheckTokenKind.Identifier or PostgresCheckTokenKind.QuotedIdentifier;
 }
 
 internal enum PostgresCheckTokenKind
 {
     Identifier,
+    QuotedIdentifier,
     String,
     Number,
     Operator,

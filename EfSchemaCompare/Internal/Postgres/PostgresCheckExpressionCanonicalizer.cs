@@ -10,10 +10,11 @@ internal static class PostgresCheckExpressionCanonicalizer
     {
         return expression switch
         {
-            PostgresIdentifierExpression identifier => new PostgresIdentifierExpression(NormalizeName(identifier.Name)),
+            //The tokenizer has already lower-cased names that aren't quoted, as PostgreSQL does, and a quoted name keeps its case
+            PostgresIdentifierExpression identifier => identifier,
             PostgresLiteralExpression literal => CanonicalizeLiteral(literal),
             PostgresUnaryExpression unary => new PostgresUnaryExpression(
-                NormalizeName(unary.Operator),
+                NormalizeKeyword(unary.Operator),
                 Canonicalize(unary.Operand)),
             PostgresBinaryExpression binary => CanonicalizeBinary(binary),
             PostgresIsNullExpression isNull => new PostgresIsNullExpression(Canonicalize(isNull.Operand), isNull.Negated),
@@ -22,7 +23,7 @@ internal static class PostgresCheckExpressionCanonicalizer
                 CanonicalizeList(inExpression.Values),
                 inExpression.Negated),
             PostgresFunctionExpression function => new PostgresFunctionExpression(
-                NormalizeName(function.Name),
+                function.Name,
                 CanonicalizeList(function.Arguments)),
             PostgresArrayExpression array => new PostgresArrayExpression(CanonicalizeList(array.Items)),
             PostgresCastExpression cast => CanonicalizeCast(cast),
@@ -39,7 +40,7 @@ internal static class PostgresCheckExpressionCanonicalizer
     {
         var left = Canonicalize(binary.Left);
         var right = Canonicalize(binary.Right);
-        var op = binary.Operator == "!=" ? "<>" : NormalizeName(binary.Operator);
+        var op = binary.Operator == "!=" ? "<>" : NormalizeKeyword(binary.Operator);
 
         if (op == "=" && TryGetSingleArrayArgument(right, "any", out var anyItems))
             return new PostgresInExpression(left, anyItems, false);
@@ -66,7 +67,7 @@ internal static class PostgresCheckExpressionCanonicalizer
     {
         items = Array.Empty<PostgresCheckExpression>();
         if (expression is not PostgresFunctionExpression function
-            || !string.Equals(function.Name, functionName, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(function.Name, functionName, StringComparison.Ordinal)
             || function.Arguments.Count != 1)
         {
             return false;
@@ -93,7 +94,7 @@ internal static class PostgresCheckExpressionCanonicalizer
         {
             PostgresLiteralKind.Boolean => new PostgresLiteralExpression(
                 PostgresLiteralKind.Boolean,
-                NormalizeName(literal.Value ?? string.Empty)),
+                NormalizeKeyword(literal.Value ?? string.Empty)),
             _ => literal
         };
     }
@@ -108,7 +109,8 @@ internal static class PostgresCheckExpressionCanonicalizer
         return typeName is "text" or "character varying" or "uuid";
     }
 
-    private static string NormalizeName(string value)
+    //Operators, e.g. AND, and TRUE and FALSE are keywords, so their case doesn't matter. Names aren't, see Canonicalize
+    private static string NormalizeKeyword(string value)
     {
         return value.ToLowerInvariant();
     }

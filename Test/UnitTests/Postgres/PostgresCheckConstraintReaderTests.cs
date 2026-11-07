@@ -10,7 +10,8 @@ using Xunit.Extensions.AssertExtensions;
 namespace Test.UnitTests.Postgres;
 
 /// <summary>
-/// Two tables have a check constraint with the same name, and one is named like PostgreSQL's NOT NULL constraints
+/// Two tables have a check constraint with the same name, and one is named like PostgreSQL's NOT NULL constraints.
+/// The widget table has the columns amount and "Amount", which are different columns
 /// </summary>
 public class PostgresCheckConstraintReaderTests
 {
@@ -61,6 +62,23 @@ public class PostgresCheckConstraintReaderTests
         });
     }
 
+    [Fact]
+    public void ConstraintOnAColumnWhoseQuotedNameDiffersOnlyInCaseIsReported()
+    {
+        //ATTEMPT
+        var errors = CompareAfterRunning(
+            """
+            ALTER TABLE widget DROP CONSTRAINT ck_quoted_amount;
+            ALTER TABLE widget ADD CONSTRAINT ck_quoted_amount CHECK (amount > 0);
+            """);
+
+        //VERIFY
+        errors.ShouldEqual(new[]
+        {
+            "DIFFERENT: DbContext 'CheckContext', check constraint. Expected = widget ck_quoted_amount ((\"Amount\" > 0)), found = widget ck_quoted_amount ((amount > 0))"
+        });
+    }
+
     //------------------------------------------------------
 
     private string[] CompareAfterRunning(string sql)
@@ -84,6 +102,7 @@ public class PostgresCheckConstraintReaderTests
     {
         public int Id { get; set; }
         public int Amount { get; set; }
+        public int QuotedAmount { get; set; }
         public string Name { get; set; }
         public string Email { get; set; }
     }
@@ -109,9 +128,13 @@ public class PostgresCheckConstraintReaderTests
                 {
                     t.HasCheckConstraint("ck_positive", "amount > 0");
                     t.HasCheckConstraint("ck_email_not_null", "email IS NOT NULL");
+                    //PostgreSQL stores this as amount < 1000000, as AMOUNT isn't quoted
+                    t.HasCheckConstraint("ck_upper_amount", "AMOUNT < 1000000");
+                    t.HasCheckConstraint("ck_quoted_amount", "\"Amount\" > 0");
                 });
                 entity.Property(e => e.Id).HasColumnName("id");
                 entity.Property(e => e.Amount).HasColumnName("amount");
+                entity.Property(e => e.QuotedAmount).HasColumnName("Amount");
                 entity.Property(e => e.Name).HasColumnName("name");
                 entity.Property(e => e.Email).HasColumnName("email");
             });

@@ -18,7 +18,7 @@ public class PostgresCheckExpressionParserTests
 
         //VERIFY
         tokens.Count(t => t.Kind == PostgresCheckTokenKind.DoubleColon).ShouldEqual(3);
-        tokens.Any(t => t.Kind == PostgresCheckTokenKind.Identifier && t.Text == "status").ShouldBeTrue();
+        tokens.Any(t => t.Kind == PostgresCheckTokenKind.QuotedIdentifier && t.Text == "status").ShouldBeTrue();
         tokens.Any(t => t.Kind == PostgresCheckTokenKind.String && t.Text == "IN_PROGRESS").ShouldBeTrue();
         tokens.Any(t => t.Kind == PostgresCheckTokenKind.LeftBracket).ShouldBeTrue();
     }
@@ -148,6 +148,48 @@ public class PostgresCheckExpressionParserTests
     }
 
     [Fact]
+    public void Canonicalize_LowerCasesOnlyNamesThatAreNotQuoted()
+    {
+        //PostgreSQL lower-cases a name that isn't quoted, so Price and PRICE are the column price
+        AssertEquivalent("Price > 0", "(price > 0)");
+        AssertEquivalent("PRICE > 0", "(\"price\" > 0)");
+        AssertEquivalent("LOWER(Name) = 'a'", "(lower(name) = 'a'::text)");
+        AssertEquivalent("a::INT > 0", "((a)::integer > 0)");
+        //A quoted name keeps its case, so "Price" is a different column
+        AssertEquivalent("\"Price\" > 0", "(\"Price\" > 0)");
+        AssertNotEquivalent("\"Price\" > 0", "(price > 0)");
+        AssertNotEquivalent("price > 0", "(\"Price\" > 0)");
+        AssertNotEquivalent("\"Lower\"(name) = 'a'", "(lower(name) = 'a'::text)");
+        AssertNotEquivalent("a::\"MyType\" > 0", "((a)::mytype > 0)");
+    }
+
+    [Fact]
+    public void Canonicalize_LowerCasesOnlyTheLettersAToZ()
+    {
+        //SETUP
+        //PostgreSQL, in a UTF8 database, lower-cases CAF followed by an upper-case E with an acute accent to caf and
+        //that same upper-case letter
+        var upperE = (char)0x00C9;
+        var lowerE = (char)0x00E9;
+
+        //ATTEMPT / VERIFY
+        AssertEquivalent($"CAF{upperE} > 0", $"(\"caf{upperE}\" > 0)");
+        AssertNotEquivalent($"CAF{upperE} > 0", $"(\"caf{lowerE}\" > 0)");
+    }
+
+    [Fact]
+    public void Parse_TreatsAQuotedKeywordAsAName()
+    {
+        //ATTEMPT
+        var result = PostgresCheckExpressionParser.TryParse("\"null\" IS NULL");
+
+        //VERIFY
+        result.Success.ShouldBeTrue(result.Error);
+        var isNull = (PostgresIsNullExpression)result.Expression!;
+        ((PostgresIdentifierExpression)isNull.Operand).Name.ShouldEqual("null");
+    }
+
+    [Fact]
     public void Parse_FailsClosedForUnsupportedSyntax()
     {
         //ATTEMPT
@@ -161,7 +203,14 @@ public class PostgresCheckExpressionParserTests
     {
         var model = Parse(modelSql);
         var database = Parse(databaseSql);
-        PostgresCheckExpressionStructuralComparer.AreEquivalent(model, database).ShouldBeTrue();
+        PostgresCheckExpressionStructuralComparer.AreEquivalent(model, database).ShouldBeTrue($"{modelSql} vs {databaseSql}");
+    }
+
+    private static void AssertNotEquivalent(string modelSql, string databaseSql)
+    {
+        var model = Parse(modelSql);
+        var database = Parse(databaseSql);
+        PostgresCheckExpressionStructuralComparer.AreEquivalent(model, database).ShouldBeFalse($"{modelSql} vs {databaseSql}");
     }
 
     private static PostgresCheckExpression Parse(string sql)

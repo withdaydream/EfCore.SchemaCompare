@@ -202,7 +202,7 @@ internal static class PostgresCheckExpressionParser
                 return new PostgresUnaryExpression(op, ParsePostfix());
             }
 
-            if (Current.Kind == PostgresCheckTokenKind.Identifier)
+            if (Current.IsName)
             {
                 var name = Advance().Text;
                 if (Match(PostgresCheckTokenKind.LeftParen))
@@ -271,12 +271,16 @@ internal static class PostgresCheckExpressionParser
         private (string TypeName, bool IsArray) ParseTypeName()
         {
             var parts = new List<string>();
-            while (Current.Kind == PostgresCheckTokenKind.Identifier)
+            while (Current.IsName)
             {
-                if (IsExpressionKeyword(Current.Text))
+                if (Current.Kind == PostgresCheckTokenKind.Identifier && IsExpressionKeyword(Current.Text))
                     break;
 
-                parts.Add(Advance().Text);
+                //A quoted type name keeps its quotes, so its case is kept and it isn't taken for an alias, e.g. "Int"
+                var part = Advance();
+                parts.Add(part.Kind == PostgresCheckTokenKind.QuotedIdentifier
+                    ? "\"" + part.Text.Replace("\"", "\"\"") + "\""
+                    : part.Text);
             }
 
             if (parts.Count == 0)

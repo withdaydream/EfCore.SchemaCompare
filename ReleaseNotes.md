@@ -21,6 +21,7 @@
 - Changed: names and values are now compared as exact text. Before, two values matched if they were the same once their spaces were removed, e.g. a comment `Total price` matched `Totalprice`. They were also compared using the current culture, so text that differed only in invisible characters, or in how an accented letter was written, matched too. Spaces between a type's size, precision and scale, e.g. `decimal(9, 2)`, still don't matter - see README.
 - Changed (PostgreSQL): a default's and a computed column's SQL are now compared as expressions, like check constraints, so the brackets, spaces and casts PostgreSQL adds when it stores them don't count as differences, e.g. `price * quantity` matches `(price * (quantity)::numeric)`. SQL that can't be parsed is compared as exact text. Expressions can now also use `*`, `/`, `%` and `||`, and the type names PostgreSQL rewrites, e.g. `int` stored as `integer`, match.
 - NOTE: These checks may report differences that were hidden before, e.g. a default whose SQL can't be parsed and differs from the database's only in spaces. Fix the database or EF Core configuration, or add an ignore line for each one.
+- Fixed (PostgreSQL): a check constraint's, a default's and a computed column's SQL ignored the case of quoted names, so e.g. `"Price" > 0` matched `price > 0`, though they use different columns. Like PostgreSQL, only names that aren't quoted are lower-cased now, and only their letters A to Z. A quoted keyword, e.g. `"null"`, is now read as a name.
 
 ## 10.2.0-daydream
 
