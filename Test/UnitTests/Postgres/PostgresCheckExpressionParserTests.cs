@@ -50,6 +50,56 @@ public class PostgresCheckExpressionParserTests
     }
 
     [Fact]
+    public void Parse_RespectsMultiplicationAdditionAndConcatenationPrecedence()
+    {
+        //ATTEMPT
+        var result = PostgresCheckExpressionParser.TryParse("a || b * c + d");
+
+        //VERIFY
+        result.Success.ShouldBeTrue(result.Error);
+        var concatenation = (PostgresBinaryExpression)result.Expression!;
+        concatenation.Operator.ShouldEqual("||");
+        var addition = (PostgresBinaryExpression)concatenation.Right;
+        addition.Operator.ShouldEqual("+");
+        ((PostgresBinaryExpression)addition.Left).Operator.ShouldEqual("*");
+    }
+
+    [Fact]
+    public void Canonicalize_HandlesPostgresComputedColumnRewrite()
+    {
+        AssertEquivalent(
+            "first_name||' '||last_name",
+            "(((first_name || ' '::text) || last_name))");
+    }
+
+    [Fact]
+    public void Canonicalize_AllowsCastsPostgresAddsAndTypeNamesItRewrites()
+    {
+        AssertEquivalent("price * quantity", "(price * (quantity)::numeric)");
+        AssertEquivalent("price * 2", "(price * (2)::numeric)");
+        AssertEquivalent("a::int > 0", "((a)::integer > 0)");
+    }
+
+    [Fact]
+    public void Canonicalize_KeepsCastsOnlyEfCoreHasOrDifferentCastsDifferent()
+    {
+        //A cast only the database has is one PostgreSQL added, but one only EF Core has is a different expression
+        PostgresCheckExpressionStructuralComparer.AreEquivalent(Parse("a::bigint > 0"), Parse("(a > 0)")).ShouldBeFalse();
+        PostgresCheckExpressionStructuralComparer.AreEquivalent(Parse("a::bigint > 0"), Parse("((a)::integer > 0)")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Canonicalize_KeepsDifferentGroupingDifferent()
+    {
+        //SETUP
+        var first = Parse("a * b + c");
+        var second = Parse("a * (b + c)");
+
+        //ATTEMPT / VERIFY
+        PostgresCheckExpressionStructuralComparer.AreEquivalent(first, second).ShouldBeFalse();
+    }
+
+    [Fact]
     public void Parse_HandlesCaseExpression()
     {
         //ATTEMPT

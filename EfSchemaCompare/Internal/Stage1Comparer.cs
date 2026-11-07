@@ -7,6 +7,7 @@ using System.Collections.Immutable;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using EfSchemaCompare.Internal.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -31,6 +32,7 @@ namespace EfSchemaCompare.Internal
         private readonly IReadOnlyList<CompareLog> _ignoreList;
         private readonly StringComparer _caseComparer;
         private readonly StringComparison _caseComparison;
+        private readonly bool _isPostgres;
 
         private string _defaultSchema;
         private Dictionary<string, DatabaseTable> _tableViewDict;
@@ -55,17 +57,24 @@ namespace EfSchemaCompare.Internal
             _relationalTypeMapping = context.GetService<IRelationalTypeMappingSource>();
             _logs = logs ?? new List<CompareLog>();
             _ignoreList = config?.LogsToIgnore ?? new List<CompareLog>();
-            _caseComparer = StringComparer.CurrentCulture;          //Turned off CaseComparer as doesn't work with EF Core 5
+            //Names and values are compared as exact text, so e.g. two ways of writing the same accented letter don't match
+            _caseComparer = StringComparer.Ordinal;
             _caseComparison = _caseComparer.GetStringComparison();
 
+            _isPostgres = IsPostgres(context);
             _constraintReader = CreateConstraintReader(context);
         }
 
         internal static IConstraintReader CreateConstraintReader(DbContext context)
         {
-            return string.Equals(context.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal)
+            return IsPostgres(context)
                 ? new PostgresConstraintReader()
                 : new ModelConstraintReader();
+        }
+
+        private static bool IsPostgres(DbContext context)
+        {
+            return string.Equals(context.Database.ProviderName, "Npgsql.EntityFrameworkCore.PostgreSQL", StringComparison.Ordinal);
         }
 
         public bool CompareModelToDatabase(DatabaseModel databaseModel)
@@ -383,7 +392,7 @@ namespace EfSchemaCompare.Internal
                     continue;
                 }
                 var jsonRelColumn = GetRelationalColumn(jsonColumnName, table, isView);
-                var jsonError = colLogger.CheckDifferent(jsonRelColumn.StoreType, jsonColumn.StoreType, CompareAttributes.ColumnType, _caseComparison);
+                var jsonError = CheckColumnTypeDifferent(colLogger, jsonRelColumn.StoreType, jsonColumn.StoreType);
                 jsonError |= colLogger.CheckDifferent(jsonRelColumn.IsNullable.NullableAsString(),
                     jsonColumn.IsNullable.NullableAsString(), CompareAttributes.Nullability, _caseComparison);
                 if (!jsonError)
@@ -462,11 +471,10 @@ namespace EfSchemaCompare.Internal
         private bool ComparePropertyToColumn(IColumnBase relColumn, CompareLogger2 logger, 
             IProperty property, DatabaseColumn column, bool isView, bool isOwned)
         {
-            var error = logger.CheckDifferent(property.GetColumnType(), column.StoreType, CompareAttributes.ColumnType, _caseComparison);
-            error |= logger.CheckDifferent(relColumn.IsNullable.NullableAsString(), 
+            var error = CheckColumnTypeDifferent(logger, property.GetColumnType(), column.StoreType);
+            error |= logger.CheckDifferent(relColumn.IsNullable.NullableAsString(),
                 column.IsNullable.NullableAsString(), CompareAttributes.Nullability, _caseComparison);
-            error |= logger.CheckDifferent(property.GetComputedColumnSql().RemoveUnnecessaryBrackets(),
-                column.ComputedColumnSql.RemoveUnnecessaryBrackets(), CompareAttributes.ComputedColumnSql, _caseComparison);
+            error |= CheckSqlDifferent(logger, property.GetComputedColumnSql(), column.ComputedColumnSql, CompareAttributes.ComputedColumnSql);
             if (property.GetComputedColumnSql() != null)
                 error |= logger.CheckDifferent(property.GetIsStored()?.ToString() ?? false.ToString()
                     , column.IsStored.ToString(),
@@ -474,15 +482,46 @@ namespace EfSchemaCompare.Internal
             var defaultValue = property.TryGetDefaultValue(out var propDefaultValue)
                 ? _relationalTypeMapping.FindMapping(propDefaultValue.GetType())
                    .GenerateSqlLiteral(propDefaultValue)
-                : property.GetDefaultValueSql().RemoveUnnecessaryBrackets();
-            error |= logger.CheckDifferent(defaultValue,
-                    column.DefaultValueSql.RemoveUnnecessaryBrackets(), CompareAttributes.DefaultValueSql, _caseComparison);
+                : property.GetDefaultValueSql();
+            error |= CheckSqlDifferent(logger, defaultValue, column.DefaultValueSql, CompareAttributes.DefaultValueSql);
             if (!isView)
             {
                 error |= CheckValueGenerated(logger, property, column, isOwned);
                 error |= CompareColumnSettings(logger, property, column);
             }
             return error;
+        }
+
+        private static readonly Regex TypeModifiers = new(@"\(([^)]*)\)", RegexOptions.Compiled);
+        private static readonly Regex Spaces = new(@"\s+", RegexOptions.Compiled);
+
+        //A database stores a type's size, precision and scale as numbers, not text, so the spaces between them don't matter,
+        //e.g. EF Core's decimal(9,2) and decimal(9, 2) from SQL Server's scaffolder. The rest of the type is compared exactly
+        private bool CheckColumnTypeDifferent(CompareLogger2 logger, string expected, string found)
+        {
+            if (string.Equals(RemoveSpacesInTypeModifiers(expected), RemoveSpacesInTypeModifiers(found), StringComparison.Ordinal))
+                return false;
+
+            return logger.CheckDifferent(expected, found, CompareAttributes.ColumnType, _caseComparison);
+        }
+
+        private static string RemoveSpacesInTypeModifiers(string storeType)
+        {
+            return storeType == null
+                ? null
+                : TypeModifiers.Replace(storeType, x => $"({Spaces.Replace(x.Groups[1].Value, "")})");
+        }
+
+        //Databases rewrite a default's or computed column's SQL when they store it, e.g. adding brackets, so outer brackets
+        //are left out. PostgreSQL also adds spaces and casts, so there the two are compared as parsed expressions.
+        //Anything else, including SQL that can't be parsed, is compared as exact text
+        private bool CheckSqlDifferent(CompareLogger2 logger, string expected, string found, CompareAttributes attribute)
+        {
+            if (_isPostgres && PostgresCheckExpressionStructuralComparer.AreEquivalent(expected, found) == true)
+                return false;
+
+            return logger.CheckDifferent(expected.RemoveUnnecessaryBrackets(), found.RemoveUnnecessaryBrackets(),
+                attribute, _caseComparison);
         }
 
         private const string NpgsqlCompressionAnnotation = "Npgsql:Compression:";

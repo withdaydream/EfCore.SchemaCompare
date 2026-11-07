@@ -40,6 +40,12 @@ _Thanks to GitHub @bgrauer-atacom and @lweberprb for suggesting that this librar
 
 ## What does EfSchemaCompare check?
 
+Names and values must be the same text, character for character. For example, a comment `Total price` doesn't match `Totalprice`, and `café` written with the single letter `é` doesn't match `café` written as an `e` followed by a combining accent. The only exceptions are changes the database itself makes:
+
+- Outer brackets around a default's or computed column's SQL are left out, as databases add them when they store it.
+- On PostgreSQL, a default's, a computed column's and a check constraint's SQL are compared as expressions, as PostgreSQL adds brackets, spaces and casts when it stores them. For example, `price * quantity` matches `(price * (quantity)::numeric)`. SQL that can't be parsed is compared as exact text.
+- Spaces between a type's size, precision and scale don't matter, as the database stores these as numbers, e.g. `decimal(9,2)` matches `decimal(9, 2)`.
+
 ### Stage 1 - checks on EF Core side
 
 - **Database:** collation (`modelBuilder.UseCollation`). The scaffolder only provides the database's collation if it isn't the server's default, so a model without one matches a database using the default.

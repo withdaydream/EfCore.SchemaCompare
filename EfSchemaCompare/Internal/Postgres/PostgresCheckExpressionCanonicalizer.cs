@@ -105,7 +105,7 @@ internal static class PostgresCheckExpressionCanonicalizer
 
     private static bool IsRepresentationCast(string typeName)
     {
-        return typeName is "text" or "character varying" or "varchar" or "uuid";
+        return typeName is "text" or "character varying" or "uuid";
     }
 
     private static string NormalizeName(string value)
@@ -113,23 +113,51 @@ internal static class PostgresCheckExpressionCanonicalizer
         return value.ToLowerInvariant();
     }
 
+    //PostgreSQL stores a type under its full name, e.g. int as integer
     private static string NormalizeTypeName(string typeName)
     {
-        return string.Join(' ', typeName.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-            .ToLowerInvariant();
+        return PostgresTypeNameNormalizer.Normalize(typeName);
     }
 }
 
 internal static class PostgresCheckExpressionStructuralComparer
 {
-    public static bool AreEquivalent(PostgresCheckExpression left, PostgresCheckExpression right)
+    /// <summary>
+    /// Returns whether EF Core's SQL and the database's are the same expression once the rewrites PostgreSQL makes when it
+    /// stores one, e.g. adding brackets, spaces and casts, are undone. Returns null if either can't be parsed.
+    /// </summary>
+    public static bool? AreEquivalent(string modelSql, string databaseSql)
     {
-        return EqualsCore(
-            PostgresCheckExpressionCanonicalizer.Canonicalize(left),
-            PostgresCheckExpressionCanonicalizer.Canonicalize(right));
+        var modelParse = PostgresCheckExpressionParser.TryParse(modelSql);
+        var databaseParse = PostgresCheckExpressionParser.TryParse(databaseSql);
+        if (!modelParse.Success || !databaseParse.Success)
+            return null;
+
+        return AreEquivalent(modelParse.Expression!, databaseParse.Expression!);
     }
 
+    /// <summary>
+    /// The order matters: the database's expression may have casts EF Core's doesn't, but not the other way round
+    /// </summary>
+    public static bool AreEquivalent(PostgresCheckExpression model, PostgresCheckExpression database)
+    {
+        return EqualsCore(
+            PostgresCheckExpressionCanonicalizer.Canonicalize(model),
+            PostgresCheckExpressionCanonicalizer.Canonicalize(database));
+    }
+
+    //Every comparison below passes EF Core's expression first and the database's second
     private static bool EqualsCore(PostgresCheckExpression left, PostgresCheckExpression right)
+    {
+        if (EqualsSameShape(left, right))
+            return true;
+
+        //PostgreSQL adds a cast where it converts a value implicitly, e.g. price * quantity is stored as
+        //price * (quantity)::numeric when price is numeric and quantity is an integer
+        return right is PostgresCastExpression cast && EqualsCore(left, cast.Operand);
+    }
+
+    private static bool EqualsSameShape(PostgresCheckExpression left, PostgresCheckExpression right)
     {
         if (left.GetType() != right.GetType())
             return false;

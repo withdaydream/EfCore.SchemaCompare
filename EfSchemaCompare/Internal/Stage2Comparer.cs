@@ -24,7 +24,8 @@ namespace EfSchemaCompare.Internal
         {
             _databaseModel = databaseModel;
             _ignoreList = config?.LogsToIgnore ?? new List<CompareLog>();
-            _caseComparer = StringComparer.CurrentCulture;          //Turned off CaseComparer as doesn't work with EF Core 5
+            //Names are compared as exact text, like stage 1 does
+            _caseComparer = StringComparer.Ordinal;
         }
 
         public IReadOnlyList<CompareLog> Logs => _logs.ToImmutableList();

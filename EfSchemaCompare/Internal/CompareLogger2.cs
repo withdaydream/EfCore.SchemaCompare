@@ -31,11 +31,13 @@ namespace EfSchemaCompare.Internal
             return log;
         }
 
+        /// <summary>
+        /// Logs a difference unless the two values are the same text, compared with <paramref name="caseComparison"/>
+        /// </summary>
         public bool CheckDifferent(string expected, string found, CompareAttributes attribute,
             StringComparison caseComparison, string name = null)
         {
-            if (!string.Equals(expected, found, caseComparison) && 
-                !string.Equals(expected?.Replace(" ", ""), found?.Replace(" ", ""), caseComparison))
+            if (!string.Equals(expected, found, caseComparison))
             {
                 return AddToLogsIfNotIgnored(new CompareLog(_type, CompareState.Different, name ?? _defaultName, attribute, expected, found));
             }

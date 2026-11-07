@@ -175,6 +175,7 @@ internal static class PostgresCheckExpressionTokenizer
                 case "!=":
                 case "<=":
                 case ">=":
+                case "||":
                     _tokens.Add(new PostgresCheckToken(PostgresCheckTokenKind.Operator, two, start));
                     _position += 2;
                     return;
@@ -203,6 +204,9 @@ internal static class PostgresCheckExpressionTokenizer
                 case '~':
                 case '+':
                 case '-':
+                case '*':
+                case '/':
+                case '%':
                     _tokens.Add(new PostgresCheckToken(PostgresCheckTokenKind.Operator, Current.ToString(CultureInfo.InvariantCulture), start));
                     break;
                 default:

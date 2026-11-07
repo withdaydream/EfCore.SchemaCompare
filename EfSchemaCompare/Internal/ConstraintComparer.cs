@@ -63,20 +63,10 @@ internal class ConstraintComparer
             if (!dbByKey.TryGetValue(key, out var dbConstraint))
                 continue;
 
-            var modelParse = PostgresCheckExpressionParser.TryParse(modelConstraint.CheckClause);
-            var dbParse = PostgresCheckExpressionParser.TryParse(dbConstraint.CheckClause);
-            if (modelParse.Success && dbParse.Success)
-            {
-                if (!PostgresCheckExpressionStructuralComparer.AreEquivalent(modelParse.Expression!, dbParse.Expression!))
-                {
-                    _logger.CheckDifferent(modelConstraint.GetCompareText(), dbConstraint.GetCompareText(),
-                        attributes, StringComparison.Ordinal);
-                }
-
-                continue;
-            }
-
-            if (!string.Equals(modelConstraint.CheckClause, dbConstraint.CheckClause, StringComparison.Ordinal))
+            //A clause that can't be parsed is compared as exact text
+            var equivalent = PostgresCheckExpressionStructuralComparer.AreEquivalent(modelConstraint.CheckClause, dbConstraint.CheckClause)
+                             ?? string.Equals(modelConstraint.CheckClause, dbConstraint.CheckClause, StringComparison.Ordinal);
+            if (!equivalent)
                 _logger.CheckDifferent(modelConstraint.GetCompareText(), dbConstraint.GetCompareText(),
                     attributes, StringComparison.Ordinal);
         }

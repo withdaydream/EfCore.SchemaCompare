@@ -7,7 +7,7 @@ namespace EfSchemaCompare.Internal.Postgres;
 internal static class PostgresCheckExpressionParser
 {
     /// <summary>
-    /// Parses the PostgreSQL check-expression subset used by SchemaCompare.
+    /// Parses the PostgreSQL expression subset used by SchemaCompare, i.e. in check constraints, defaults and computed columns.
     /// This intentionally is not a complete PostgreSQL parser; unsupported syntax fails closed.
     /// </summary>
     public static PostgresCheckExpressionParseResult TryParse(string sql)
@@ -80,7 +80,7 @@ internal static class PostgresCheckExpressionParser
 
         private PostgresCheckExpression ParseComparison()
         {
-            var left = ParseAdditive();
+            var left = ParseOtherOperator();
 
             if (MatchKeyword("is"))
             {
@@ -111,7 +111,20 @@ internal static class PostgresCheckExpressionParser
             if (Current.Kind == PostgresCheckTokenKind.Operator && IsComparisonOperator(Current.Text))
             {
                 var op = NormalizeOperator(Advance().Text);
-                return new PostgresBinaryExpression(op, left, ParseAdditive());
+                return new PostgresBinaryExpression(op, left, ParseOtherOperator());
+            }
+
+            return left;
+        }
+
+        //PostgreSQL gives operators without a precedence of their own, e.g. ||, one that is lower than + and -
+        private PostgresCheckExpression ParseOtherOperator()
+        {
+            var left = ParseAdditive();
+            while (Current.Kind == PostgresCheckTokenKind.Operator && Current.Text == "||")
+            {
+                var op = Advance().Text;
+                left = new PostgresBinaryExpression(op, left, ParseAdditive());
             }
 
             return left;
@@ -119,8 +132,20 @@ internal static class PostgresCheckExpressionParser
 
         private PostgresCheckExpression ParseAdditive()
         {
-            var left = ParsePostfix();
+            var left = ParseMultiplicative();
             while (Current.Kind == PostgresCheckTokenKind.Operator && Current.Text is "+" or "-")
+            {
+                var op = Advance().Text;
+                left = new PostgresBinaryExpression(op, left, ParseMultiplicative());
+            }
+
+            return left;
+        }
+
+        private PostgresCheckExpression ParseMultiplicative()
+        {
+            var left = ParsePostfix();
+            while (Current.Kind == PostgresCheckTokenKind.Operator && Current.Text is "*" or "/" or "%")
             {
                 var op = Advance().Text;
                 left = new PostgresBinaryExpression(op, left, ParsePostfix());
