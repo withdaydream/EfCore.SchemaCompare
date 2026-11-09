@@ -59,7 +59,10 @@ namespace EfSchemaCompare
         //Indexes (PostgreSQL only): the ordered list of the columns in an INCLUDE clause, and NULLS [NOT] DISTINCT
         IncludeColumns, NullsDistinct,
         //Tables and constraints (PostgreSQL only) that have settings EF Core can't set
-        RowLevelSecurity, Policy, Rule, Deferrable, NotValid
+        RowLevelSecurity, Policy, Rule, Deferrable, NotValid,
+        //Indexes (PostgreSQL only): a partial index's WHERE clause, the method, and each column's sort order, nulls order
+        //and operator class
+        Filter, Method, SortOrder, NullsOrder, OperatorClasses
     }
 #pragma warning restore 1591
 

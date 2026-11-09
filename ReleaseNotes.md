@@ -26,6 +26,8 @@
 - New feature (PostgreSQL): compares an index's `INCLUDE` columns (`IncludeProperties`), in order, and a unique index's `NULLS NOT DISTINCT` (`AreNullsDistinct`). An index EF Core doesn't give `INCLUDE` columns must not have any in the database. EF Core not setting `AreNullsDistinct` is compared as `NULLS DISTINCT`, as PostgreSQL stores it either way - see README.
 - New feature (PostgreSQL): settings EF Core can't set are reported as `EXTRA IN DATABASE` on the tables a DbContext maps, as EF Core never creates them: an index on an expression, row-level security being enabled or forced and its policies, rules, `DEFERRABLE` primary keys, `UNIQUE` constraints and foreign keys, `NOT VALID` foreign keys, and `INCLUDE` columns or `NULLS NOT DISTINCT` on a primary key or `UNIQUE` constraint - see README.
 - NOTE: If your database has any of these you will see new errors. Fix the database or EF Core configuration, or add an ignore line for each one.
+- New feature (PostgreSQL): compares an index's filter (`HasFilter`), method (`HasMethod`), and each column's sort order (`IsDescending`), nulls order (`HasNullSortOrder`) and operator class (`HasOperators`). An index EF Core doesn't give a filter must not have one in the database, and the filter is compared as an expression, as PostgreSQL rewrites it. The others are stored whether or not they were set, so one EF Core doesn't set is compared as its default, e.g. `btree` - see README.
+- NOTE: If an index in your database differs in any of these you will see new `DIFFERENT` errors. Fix the database or EF Core configuration, or add an ignore line for each one.
 
 ## 10.2.0-daydream
 

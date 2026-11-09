@@ -214,6 +214,42 @@ public interface IConstraintReader
         /// </summary>
         [Column("include_columns")]
         public string IncludeColumns { get; init; }
+
+        /// <summary>
+        /// The WHERE clause of a partial index, as PostgreSQL stores it, e.g. "(deleted_at IS NULL)". Null if it doesn't have one
+        /// </summary>
+        [Column("filter")]
+        public string Filter { get; init; }
+
+        /// <summary>
+        /// The index's access method, e.g. "btree" or "gin"
+        /// </summary>
+        [Column("method")]
+        public required string Method { get; init; }
+
+        /// <summary>
+        /// Each key column's sort order, e.g. "ASC,DESC"
+        /// </summary>
+        [Column("sort_order")]
+        public required string SortOrder { get; init; }
+
+        /// <summary>
+        /// Each key column's nulls order, e.g. "NULLS LAST,NULLS FIRST"
+        /// </summary>
+        [Column("nulls_order")]
+        public required string NullsOrder { get; init; }
+
+        /// <summary>
+        /// Each key column's operator class, e.g. "text_ops,text_pattern_ops"
+        /// </summary>
+        [Column("operator_classes")]
+        public required string OperatorClasses { get; init; }
+
+        /// <summary>
+        /// Whether each of <see cref="OperatorClasses"/> is the default one for its column's type, e.g. "true,false"
+        /// </summary>
+        [Column("default_operator_classes")]
+        public required string DefaultOperatorClasses { get; init; }
     }
 
     public record SettingEfCoreCantSet

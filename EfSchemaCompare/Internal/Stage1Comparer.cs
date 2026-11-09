@@ -292,21 +292,23 @@ namespace EfSchemaCompare.Internal
                         }
                     }
                     //A missing column is reported above, so this finds the columns in a different order, or extra columns
+                    var dbColumnNames = string.Join(",", indexDict[indexName].Columns.Select(x => x.Name));
                     if (!error)
-                        error |= logger.CheckDifferent(allColumnNames,
-                            string.Join(",", indexDict[indexName].Columns.Select(x => x.Name)), CompareAttributes.Columns, _caseComparison);
+                        error |= logger.CheckDifferent(allColumnNames, dbColumnNames, CompareAttributes.Columns, _caseComparison);
+                    //Each column's settings, e.g. its sort order, are only compared if the columns are the same, as otherwise
+                    //they would be compared with another column's, and the columns are already reported as different
+                    var sameColumns = string.Equals(allColumnNames, dbColumnNames, _caseComparison);
                     error |= logger.CheckDifferent(entityIdx.IsUnique.ToString(),
                         indexDict[indexName].IsUnique.ToString(), CompareAttributes.Unique, _caseComparison);
                     var designTimeIndex = FindDesignTimeIndex(entityIdx);
                     error |= logger.CheckDifferent(DatabaseIndexData.FormatCollations(designTimeIndex?[RelationalAnnotationNames.Collation]),
                         indexDict[indexName].Collations, CompareAttributes.Collation, _caseComparison);
-                    //A storage parameter, INCLUDE or NULLS DISTINCT difference doesn't stop the index being marked OK,
-                    //as otherwise stage 2 would say it isn't used
+                    //A difference in a storage parameter, or a setting TableSettingsComparer compares, e.g. a filter,
+                    //doesn't stop the index being marked OK, as otherwise stage 2 would say it isn't used
                     _storageParameterComparer.CompareIndex(logger, table.Schema, table.Name, indexName,
                         designTimeIndex?.GetAnnotations() ?? []);
                     _tableSettingsComparer.CompareIndex(logger, table.Schema, table.Name, indexName,
-                        GetIncludeColumns(entityIdx, designTimeIndex, table), entityIdx.IsUnique,
-                        designTimeIndex?[TableSettingsComparer.NullsDistinctAnnotation] as bool?);
+                        GetEfIndexSettings(entityIdx, designTimeIndex, table), sameColumns);
                     if (!error)
                         logger.MarkAsOk(indexName);
                 }
@@ -348,10 +350,27 @@ namespace EfSchemaCompare.Internal
             }
         }
 
-        //IncludeProperties holds the names of the properties, so they are turned into the names of their columns
-        private List<string> GetIncludeColumns(IIndex index, IIndex designTimeIndex, DatabaseTable table)
+        //These are design-time annotations, so they are read from the design-time index if there is one
+        private EfIndexSettings GetEfIndexSettings(IIndex index, IIndex designTimeIndex, DatabaseTable table)
         {
-            return (designTimeIndex?[TableSettingsComparer.IncludeAnnotation] as IEnumerable<string>)?
+            var annotations = (IIndex)designTimeIndex ?? index;
+            return new EfIndexSettings(
+                index.Properties.Count,
+                GetIncludeColumns(index, annotations, table),
+                index.IsUnique,
+                annotations[TableSettingsComparer.NullsDistinctAnnotation] as bool?,
+                annotations.GetFilter(),
+                annotations[TableSettingsComparer.MethodAnnotation] as string,
+                annotations.IsDescending,
+                //Each value is one of Npgsql's NullSortOrder, which this library doesn't reference, so it is read by name
+                (annotations[TableSettingsComparer.NullSortOrderAnnotation] as Array)?.Cast<object>().Select(x => x?.ToString()).ToList(),
+                (annotations[TableSettingsComparer.OperatorsAnnotation] as IEnumerable<string>)?.ToList());
+        }
+
+        //IncludeProperties holds the names of the properties, so they are turned into the names of their columns
+        private List<string> GetIncludeColumns(IIndex index, IIndex annotations, DatabaseTable table)
+        {
+            return (annotations[TableSettingsComparer.IncludeAnnotation] as IEnumerable<string>)?
                 .Select(name => index.DeclaringEntityType.FindProperty(name) is { } property
                     ? GetColumnNameTakingIntoAccountSchema(property, table) ?? name
                     : name)

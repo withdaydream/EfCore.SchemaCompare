@@ -260,7 +260,8 @@ public class PostgresConstraintReader : IConstraintReader
     /// Returns every index on every table in the database, other than in the system schemas, including the ones that back a
     /// primary key or a UNIQUE or exclusion constraint. An index's INCLUDE columns are the ones after its key columns
     /// (indnkeyatts). NULLS NOT DISTINCT was added in PostgreSQL 15, so before that indnullsnotdistinct doesn't exist and
-    /// is read as false.
+    /// is read as false. Each key column's sort order and nulls order are bits 1 (DESC) and 2 (NULLS FIRST) of indoption,
+    /// and its operator class is in indclass, along with whether it is the default one for the column's type.
     /// </summary>
     public IReadOnlyList<IConstraintReader.IndexDetail> GetIndexDetails(DbContext dbContext)
     {
@@ -276,11 +277,25 @@ public class PostgresConstraintReader : IConstraintReader
                 (SELECT string_agg(a.attname::text, ',' ORDER BY k.ord)
                  FROM unnest(x.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
                  JOIN pg_attribute AS a ON a.attrelid = x.indrelid AND a.attnum = k.attnum
-                 WHERE k.ord > x.indnkeyatts) AS include_columns
+                 WHERE k.ord > x.indnkeyatts) AS include_columns,
+                pg_get_expr(x.indpred, x.indrelid) AS filter,
+                am.amname::text AS method,
+                (SELECT string_agg(CASE WHEN (o.flags & 1) = 1 THEN 'DESC' ELSE 'ASC' END, ',' ORDER BY o.ord)
+                 FROM unnest(x.indoption::int2[]) WITH ORDINALITY AS o(flags, ord)) AS sort_order,
+                (SELECT string_agg(CASE WHEN (o.flags & 2) = 2 THEN 'NULLS FIRST' ELSE 'NULLS LAST' END, ',' ORDER BY o.ord)
+                 FROM unnest(x.indoption::int2[]) WITH ORDINALITY AS o(flags, ord)) AS nulls_order,
+                (SELECT string_agg(oc.opcname::text, ',' ORDER BY c.ord)
+                 FROM unnest(x.indclass::oid[]) WITH ORDINALITY AS c(opclass, ord)
+                 JOIN pg_opclass AS oc ON oc.oid = c.opclass) AS operator_classes,
+                (SELECT string_agg(oc.opcdefault::text, ',' ORDER BY c.ord)
+                 FROM unnest(x.indclass::oid[]) WITH ORDINALITY AS c(opclass, ord)
+                 JOIN pg_opclass AS oc ON oc.oid = c.opclass) AS default_operator_classes
             FROM
                 pg_index AS x
             JOIN
                 pg_class AS i ON i.oid = x.indexrelid
+            JOIN
+                pg_am AS am ON am.oid = i.relam
             JOIN
                 pg_class AS t ON t.oid = x.indrelid
             JOIN
