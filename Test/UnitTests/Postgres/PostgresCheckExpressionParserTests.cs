@@ -190,6 +190,40 @@ public class PostgresCheckExpressionParserTests
     }
 
     [Fact]
+    public void Canonicalize_HandlesJsonOperatorsPostgresRewrites()
+    {
+        //A filter from a real project, and the text PostgreSQL stores for it
+        AssertEquivalent(
+            "\"agent_type\" = 'MAIN_AGENT' AND ((\"type\" = 'ROUTINE' AND payload->>'origin' = 'SCHEDULED') OR (\"type\" = 'RETRY' AND payload->>'originalTriggerType' = 'ROUTINE' AND payload->'originalTriggerPayload'->>'origin' = 'SCHEDULED'))",
+            """(((agent_type)::text = 'MAIN_AGENT'::text) AND ((((type)::text = 'ROUTINE'::text) AND ((payload ->> 'origin'::text) = 'SCHEDULED'::text)) OR (((type)::text = 'RETRY'::text) AND ((payload ->> 'originalTriggerType'::text) = 'ROUTINE'::text) AND (((payload -> 'originalTriggerPayload'::text) ->> 'origin'::text) = 'SCHEDULED'::text))))""");
+        AssertEquivalent("payload #>> '{a,b}' = 'x'", "((payload #>> '{a,b}'::text[]) = 'x'::text)");
+        AssertEquivalent("payload @> '{\"a\": 1}' AND tags <@ ARRAY['x']", "((payload @> '{\"a\": 1}'::jsonb) AND (tags <@ ARRAY['x'::text]))");
+    }
+
+    [Fact]
+    public void Parse_GivesJsonOperatorsHigherPrecedenceThanComparisons()
+    {
+        //ATTEMPT
+        var result = PostgresCheckExpressionParser.TryParse("payload -> 'a' ->> 'b' = 'x'");
+
+        //VERIFY
+        result.Success.ShouldBeTrue(result.Error);
+        var comparison = (PostgresBinaryExpression)result.Expression!;
+        comparison.Operator.ShouldEqual("=");
+        var getText = (PostgresBinaryExpression)comparison.Left;
+        getText.Operator.ShouldEqual("->>");
+        ((PostgresBinaryExpression)getText.Left).Operator.ShouldEqual("->");
+    }
+
+    [Fact]
+    public void Canonicalize_KeepsDifferentJsonOperatorsDifferent()
+    {
+        AssertNotEquivalent("payload->'a' = 'x'", "((payload ->> 'a'::text) = 'x'::text)");
+        AssertNotEquivalent("payload->>'a' = 'x'", "((payload ->> 'b'::text) = 'x'::text)");
+        AssertNotEquivalent("payload @> '{}'", "(payload <@ '{}'::jsonb)");
+    }
+
+    [Fact]
     public void Parse_FailsClosedForUnsupportedSyntax()
     {
         //ATTEMPT

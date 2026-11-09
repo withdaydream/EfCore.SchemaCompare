@@ -178,6 +178,15 @@ internal static class PostgresCheckExpressionTokenizer
         private void ReadSymbol()
         {
             var start = _position;
+            //The JSON operators that take a path, e.g. payload #>> '{a,b}', and ->>, which would otherwise be read as ->
+            var three = _position + 2 < _sql.Length ? _sql.Substring(_position, 3) : string.Empty;
+            if (three is "->>" or "#>>")
+            {
+                _tokens.Add(new PostgresCheckToken(PostgresCheckTokenKind.Operator, three, start));
+                _position += 3;
+                return;
+            }
+
             var two = _position + 1 < _sql.Length ? _sql.Substring(_position, 2) : string.Empty;
             switch (two)
             {
@@ -190,6 +199,11 @@ internal static class PostgresCheckExpressionTokenizer
                 case "<=":
                 case ">=":
                 case "||":
+                //JSON operators, and @> and <@, which test whether a JSON value or an array contains another
+                case "->":
+                case "#>":
+                case "@>":
+                case "<@":
                     _tokens.Add(new PostgresCheckToken(PostgresCheckTokenKind.Operator, two, start));
                     _position += 2;
                     return;

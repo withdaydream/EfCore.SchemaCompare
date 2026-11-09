@@ -117,11 +117,12 @@ internal static class PostgresCheckExpressionParser
             return left;
         }
 
-        //PostgreSQL gives operators without a precedence of their own, e.g. ||, one that is lower than + and -
+        //PostgreSQL gives operators without a precedence of their own, e.g. || and the JSON operators, one that is lower than
+        //+ and -, but higher than comparisons, so payload ->> 'a' = 'b' is (payload ->> 'a') = 'b'
         private PostgresCheckExpression ParseOtherOperator()
         {
             var left = ParseAdditive();
-            while (Current.Kind == PostgresCheckTokenKind.Operator && Current.Text == "||")
+            while (Current.Kind == PostgresCheckTokenKind.Operator && IsOtherOperator(Current.Text))
             {
                 var op = Advance().Text;
                 left = new PostgresBinaryExpression(op, left, ParseAdditive());
@@ -338,6 +339,11 @@ internal static class PostgresCheckExpressionParser
         private static PostgresCheckParseException Error(string message, PostgresCheckToken token)
         {
             return new PostgresCheckParseException($"{message} at position {token.Position}");
+        }
+
+        private static bool IsOtherOperator(string op)
+        {
+            return op is "||" or "->" or "->>" or "#>" or "#>>" or "@>" or "<@";
         }
 
         private static bool IsComparisonOperator(string op)

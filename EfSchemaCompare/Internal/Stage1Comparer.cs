@@ -301,8 +301,10 @@ namespace EfSchemaCompare.Internal
                     error |= logger.CheckDifferent(entityIdx.IsUnique.ToString(),
                         indexDict[indexName].IsUnique.ToString(), CompareAttributes.Unique, _caseComparison);
                     var designTimeIndex = FindDesignTimeIndex(entityIdx);
-                    error |= logger.CheckDifferent(DatabaseIndexData.FormatCollations(designTimeIndex?[RelationalAnnotationNames.Collation]),
-                        indexDict[indexName].Collations, CompareAttributes.Collation, _caseComparison);
+                    var efIndexCollations = _isPostgres
+                        ? GetEffectiveIndexCollations(entityIdx, designTimeIndex, table)
+                        : DatabaseIndexData.FormatCollations(designTimeIndex?[RelationalAnnotationNames.Collation]);
+                    error |= logger.CheckDifferent(efIndexCollations, indexDict[indexName].Collations, CompareAttributes.Collation, _caseComparison);
                     //A difference in a storage parameter, or a setting TableSettingsComparer compares, e.g. a filter,
                     //doesn't stop the index being marked OK, as otherwise stage 2 would say it isn't used
                     _storageParameterComparer.CompareIndex(logger, table.Schema, table.Name, indexName,
@@ -348,6 +350,22 @@ namespace EfSchemaCompare.Internal
                 if (!error)
                     logger.MarkAsOk(constraintName);
             }
+        }
+
+        //PostgreSQL stores a collation for every column of an index, and one the index doesn't give a column is the column's
+        //own collation, so it can't tell the two apart. An index column EF Core doesn't give a collation is therefore
+        //compared as its column's collation. Formatted like DatabaseIndexData.FormatCollations, e.g. "default,C"
+        private string GetEffectiveIndexCollations(IIndex index, IIndex designTimeIndex, DatabaseTable table)
+        {
+            var indexCollations = designTimeIndex?[RelationalAnnotationNames.Collation];
+            var collations = index.Properties.Select((property, i) =>
+                (indexCollations switch
+                {
+                    string[] perColumn => i < perColumn.Length ? perColumn[i] : null,
+                    string forAll => forAll,
+                    _ => null
+                }) ?? FindDesignTimeColumn(GetColumnNameTakingIntoAccountSchema(property, table), table)?.Collation).ToList();
+            return collations.All(x => x == null) ? null : string.Join(",", collations.Select(x => x ?? "default"));
         }
 
         //These are design-time annotations, so they are read from the design-time index if there is one
