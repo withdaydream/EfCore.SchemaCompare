@@ -269,12 +269,12 @@ namespace EfSchemaCompare.Internal
 
         private void CompareIndexes(CompareLog log, ITypeBase entityType, DatabaseTable table)
         {
-            var indexDict = DatabaseIndexData.GetIndexes(table).ToDictionary(x => x.Name, _caseComparer);
+            var indexDict = DatabaseIndexData.GetIndexes(table, GetComparableCollation).ToDictionary(x => x.Name, _caseComparer);
             foreach (var entityIdx in entityType.ContainingEntityType.GetIndexes())
             {
                 var entityIdxprops = entityIdx.Properties;
                 var allColumnNames = string.Join(",", entityIdxprops
-                    .Select(x => GetColumnNameTakingIntoAccountSchema(x, table)));
+                    .Select(x => GetIndexColumnName(x, table)));
                 var logger = new CompareLogger2(CompareType.Index, allColumnNames, log.SubLogs, _ignoreList, () => _hasErrors = true);
                 var indexName = GetIndexDatabaseName(entityIdx, table);
                 if (indexName != null && indexDict.ContainsKey(indexName))
@@ -284,7 +284,7 @@ namespace EfSchemaCompare.Internal
                     var thisIdxCols = indexDict[indexName].Columns.ToDictionary(x => x.Name, _caseComparer);
                     foreach (var idxProp in entityIdxprops)
                     {
-                        var columnName = GetColumnNameTakingIntoAccountSchema(idxProp, table);
+                        var columnName = GetIndexColumnName(idxProp, table);
                         if (!thisIdxCols.ContainsKey(columnName))
                         {
                             logger.NotInDatabase(columnName);
@@ -303,7 +303,7 @@ namespace EfSchemaCompare.Internal
                     var designTimeIndex = FindDesignTimeIndex(entityIdx);
                     var efIndexCollations = _isPostgres
                         ? GetEffectiveIndexCollations(entityIdx, designTimeIndex, table)
-                        : DatabaseIndexData.FormatCollations(designTimeIndex?[RelationalAnnotationNames.Collation]);
+                        : DatabaseIndexData.FormatCollations(designTimeIndex?[RelationalAnnotationNames.Collation], GetComparableCollation);
                     error |= logger.CheckDifferent(efIndexCollations, indexDict[indexName].Collations, CompareAttributes.Collation, _caseComparison);
                     //A difference in a storage parameter, or a setting TableSettingsComparer compares, e.g. a filter,
                     //doesn't stop the index being marked OK, as otherwise stage 2 would say it isn't used
@@ -358,13 +358,13 @@ namespace EfSchemaCompare.Internal
         private string GetEffectiveIndexCollations(IIndex index, IIndex designTimeIndex, DatabaseTable table)
         {
             var indexCollations = designTimeIndex?[RelationalAnnotationNames.Collation];
-            var collations = index.Properties.Select((property, i) =>
+            var collations = index.Properties.Select((property, i) => GetComparableCollation(
                 (indexCollations switch
                 {
                     string[] perColumn => i < perColumn.Length ? perColumn[i] : null,
                     string forAll => forAll,
                     _ => null
-                }) ?? FindDesignTimeColumn(GetColumnNameTakingIntoAccountSchema(property, table), table)?.Collation).ToList();
+                }) ?? FindDesignTimeColumn(GetIndexColumnName(property, table), table)?.Collation)).ToList();
             return collations.All(x => x == null) ? null : string.Join(",", collations.Select(x => x ?? "default"));
         }
 
@@ -592,7 +592,8 @@ namespace EfSchemaCompare.Internal
             if (designTimeColumn == null)
                 return false;
 
-            var error = logger.CheckDifferent(designTimeColumn.Collation, column.Collation, CompareAttributes.Collation, _caseComparison);
+            var error = logger.CheckDifferent(GetComparableCollation(designTimeColumn.Collation), GetComparableCollation(column.Collation),
+                CompareAttributes.Collation, _caseComparison);
             error |= logger.CheckDifferent(designTimeColumn.Comment, column.Comment, CompareAttributes.Comment, _caseComparison);
             error |= logger.CheckDifferent(designTimeColumn[NpgsqlCompressionAnnotation] as string, column[NpgsqlCompressionAnnotation] as string,
                 CompareAttributes.Compression, StringComparison.OrdinalIgnoreCase);
@@ -608,6 +609,13 @@ namespace EfSchemaCompare.Internal
                     error |= logger.CheckDifferent(efOption, dbOption, CompareAttributes.IdentityOptions, StringComparison.Ordinal);
             }
             return error;
+        }
+
+        //The text a column's or index's collation is compared as. On PostgreSQL, a collation that is one quoted identifier is
+        //compared without its quotes, see PostgresCollationName. The database's collation isn't, as it is a locale, not a collation's name
+        private string GetComparableCollation(string collation)
+        {
+            return _isPostgres ? PostgresCollationName.Unquote(collation) : collation;
         }
 
         //Only the strategies that are part of the column's definition. Others, e.g. SequenceHiLo, don't change the column
@@ -681,6 +689,15 @@ namespace EfSchemaCompare.Internal
                 ? property.GetColumnName(StoreObjectIdentifier.View(table.Name, modelSchema))
                 : property.GetColumnName(StoreObjectIdentifier.Table(table.Name, modelSchema));
             return columnName;
+        }
+
+        //From EF Core 11 an index can be on a property inside a complex type mapped to JSON, so an index's properties are
+        //IPropertyBase. Only an IProperty has a column name, so any other property's name is used instead
+        private string GetIndexColumnName(IPropertyBase property, DatabaseTable table)
+        {
+            return property is IProperty columnProperty
+                ? GetColumnNameTakingIntoAccountSchema(columnProperty, table)
+                : property.Name;
         }
 
         private string GetForeignKeyConstraintName(IForeignKey foreignKey, DatabaseTable table)

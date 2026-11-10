@@ -44,12 +44,12 @@ namespace Test.UnitTests.OldTestSupportIssueTests
                 //VERIFY
                 hasErrors.ShouldBeTrue();
 
-                //This changed with EF Core 8. Now HasDefaultValueSql of Enums and int now set the expected 
+                //This changed with EF Core 8. Now HasDefaultValueSql of Enums and int now set the expected
+                //This changed with EF Core 11. It now creates an xml column's default as N'...', like the expected value,
+                //where before it created it as '...', so the xml columns no longer differ
                 comparer.GetAllErrors.ShouldEqual(
 @"DIFFERENT: Message->Property 'BoolRequiredDefaultFalse', default value sql. Expected = CAST(0 AS bit), found = CONVERT([bit],(0))
-DIFFERENT: Message->Property 'BoolRequiredDefaultTrue', default value sql. Expected = CAST(1 AS bit), found = CONVERT([bit],(1))
-DIFFERENT: Message->Property 'XmlRequiredDefaultEmpty', default value sql. Expected = N'', found = ''
-DIFFERENT: Message->Property 'XmlRequiredDefaultSomething', default value sql. Expected = N'<something />', found = '<something />'");
+DIFFERENT: Message->Property 'BoolRequiredDefaultTrue', default value sql. Expected = CAST(1 AS bit), found = CONVERT([bit],(1))");
             }
         }
 

@@ -98,6 +98,52 @@ public class PostgresColumnSettingsTests
         });
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CollationWithADotMatchesWithOrWithoutQuotes(bool quoted)
+    {
+        //SETUP
+        //From version 11, Npgsql's scaffolder writes a collation whose name contains a dot in quotes, e.g. "en_US.utf8",
+        //but UseCollation("en_US.utf8") and UseCollation("\"en_US.utf8\"") create the same collation
+        var connectionString = this.GetUniquePostgreSqlConnectionString();
+        DbContext context = quoted
+            ? CreateContext<QuotedDottedCollationContext>(connectionString, o => new QuotedDottedCollationContext(o))
+            : CreateContext<DottedCollationContext>(connectionString, o => new DottedCollationContext(o));
+        using (context)
+        {
+            //ATTEMPT
+            var errors = Compare(connectionString, context);
+
+            //VERIFY
+            errors.ShouldEqual(Array.Empty<string>());
+        }
+    }
+
+    [Fact]
+    public void CollationWithADotIsReportedWithoutQuotes()
+    {
+        //SETUP
+        var connectionString = this.GetUniquePostgreSqlConnectionString();
+        using var context = CreateContext<QuotedDottedCollationContext>(connectionString, o => new QuotedDottedCollationContext(o));
+        context.Database.ExecuteSqlRaw(
+            """
+            ALTER TABLE widget ALTER COLUMN name TYPE text COLLATE "POSIX";
+            DROP INDEX ix_widget_code;
+            CREATE INDEX ix_widget_code ON widget (code COLLATE "C");
+            """);
+
+        //ATTEMPT
+        var errors = Compare(connectionString, context);
+
+        //VERIFY
+        errors.ShouldEqual(new[]
+        {
+            "DIFFERENT: Widget->Index 'code', collation. Expected = en_US.utf8, found = C",
+            "DIFFERENT: Widget->Property 'Name', collation. Expected = en_US.utf8, found = POSIX",
+        });
+    }
+
     [Fact]
     public void IdentityOptionsSetToTheirDefaultsMatchOnesNotSet()
     {
@@ -239,6 +285,40 @@ public class PostgresColumnSettingsTests
         {
             MapWidget(modelBuilder, entity => entity.Property(e => e.Id).HasIdentityOptions(
                 startValue: 1, incrementBy: 1, minValue: 1, maxValue: int.MaxValue, cyclic: false, numbersToCache: 1));
+        }
+    }
+
+    //A collation whose name contains a dot, set on a column and an index without quotes
+    private class DottedCollationContext : DbContext
+    {
+        public DottedCollationContext(DbContextOptions<DottedCollationContext> options) : base(options) { }
+
+        public DbSet<Widget> Widgets { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            MapWidget(modelBuilder, entity =>
+            {
+                entity.Property(e => e.Name).UseCollation("en_US.utf8");
+                entity.HasIndex(e => e.Code).HasDatabaseName("ix_widget_code").UseCollation("en_US.utf8");
+            });
+        }
+    }
+
+    //The same collation in quotes, as Npgsql 11's scaffolder writes it
+    private class QuotedDottedCollationContext : DbContext
+    {
+        public QuotedDottedCollationContext(DbContextOptions<QuotedDottedCollationContext> options) : base(options) { }
+
+        public DbSet<Widget> Widgets { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            MapWidget(modelBuilder, entity =>
+            {
+                entity.Property(e => e.Name).UseCollation("\"en_US.utf8\"");
+                entity.HasIndex(e => e.Code).HasDatabaseName("ix_widget_code").UseCollation("\"en_US.utf8\"");
+            });
         }
     }
 
