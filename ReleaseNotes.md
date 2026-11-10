@@ -1,5 +1,9 @@
 # Release notes
 
+## 11.0.0-daydream
+
+- Updated to .NET 11 and EF Core 11. This version only works with .NET 11. Use 10.3.0-daydream with .NET 10.
+
 ## 10.3.0-daydream
 
 - A declared function that is built into PostgreSQL or comes from an extension, e.g. `jsonb_extract_path_text`, is no longer reported as `NOT IN DATABASE`.
